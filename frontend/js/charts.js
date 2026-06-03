@@ -209,9 +209,12 @@ function _renderInstChart(data) {
 
   if (_instChart) { _instChart.destroy(); _instChart = null; }
 
-  // Replace canvas to clear any stale 0-height dimensions from hidden-panel render
+  // Replace canvas and set explicit height so Chart.js never gets 0-height canvas
   wrap.innerHTML = '<canvas id="instChart"></canvas>';
   const ctx = document.getElementById('instChart');
+  const wrapH = wrap.clientHeight || 160;
+  ctx.style.height = wrapH + 'px';
+  ctx.style.width = '100%';
 
   _instChart = new Chart(ctx, {
     type: 'bar',
@@ -246,7 +249,9 @@ function _renderInstChart(data) {
     },
   });
 
-  // Render list
+  // Force resize after DOM paints to pick up any final layout dimensions
+  requestAnimationFrame(() => { if (_instChart) _instChart.resize(); });
+
   _renderInstList(sorted, key);
 }
 
@@ -293,7 +298,13 @@ async function loadInstitutional() {
     document.getElementById('sumDealer').textContent = d.text;
     document.getElementById('sumDealer').className = `sum-val ${d.cls}`;
 
-    _renderInstChart(_instData);
+    // On mobile, only render the chart if the inst panel is currently visible.
+    // If hidden, showPage('inst') will trigger _renderInstChart when user switches tabs.
+    const panel = document.getElementById('pageInst');
+    const panelVisible = window.innerWidth >= 1024 || (panel && panel.classList.contains('m-on'));
+    if (panelVisible) {
+      _renderInstChart(_instData);
+    }
   } catch (e) {
     console.error('loadInstitutional', e);
     document.getElementById('instList').innerHTML = '<div class="loading-text">連線失敗</div>';

@@ -140,10 +140,12 @@ function buildCard(s) {
   const score = s.score || 0;
   const strats = s.strategies || [];
 
-  // Strategy indicator tags
   const stratTags = [
-    strats.includes('低檔量增') ? '<span class="tag blue">📊量增</span>' : '',
-    strats.includes('法人買超') ? '<span class="tag bull">🏦法人</span>' : '',
+    strats.includes('縮量回檔')   ? '<span class="tag blue">📉縮量</span>'  : '',
+    strats.includes('低檔量增')   ? '<span class="tag blue">📊量增</span>'  : '',
+    strats.includes('法人買超')   ? '<span class="tag bull">🏦法人</span>'  : '',
+    strats.includes('淺回測')     ? '<span class="tag gold">📐淺回測</span>': '',
+    strats.includes('均線守支撐') ? '<span class="tag green">📏均線</span>' : '',
     strats.some(t => t.startsWith('題材:')) ? '<span class="tag purple">🔬題材</span>' : '',
   ].filter(Boolean).join('');
 
@@ -161,7 +163,8 @@ function buildCard(s) {
       <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
         <polyline points="20 6 12 14 8 10 4 14"/>
       </svg>
-      回撤 ${s.pullback_pct?.toFixed(1) ?? '--'}%
+      回檔 ${s.pullback_pct?.toFixed(1) ?? '--'}%
+      ${s.rally_pct != null ? `<span class="card-rally">↑飆漲${s.rally_pct.toFixed(0)}%</span>` : ''}
     </div>
     <div class="score-bar">
       <div class="score-label"><span>分析分數</span><span>${score}</span></div>
@@ -218,20 +221,28 @@ function openDetail(symbol) {
   const rsiLabel = s.rsi < 30 ? '超賣區' : s.rsi < 50 ? '低檔整理' : s.rsi < 65 ? '中性' : '偏高';
   const rsiCls   = s.rsi < 50 ? 'accent' : 'up';
   const macdCls  = ['黃金交叉','即將交叉','多頭'].includes(s.macd_status) ? 'gold' : '';
-  const volCls   = s.vol_ratio >= 1.4 ? 'up' : '';
+  const volCls   = s.vol_ratio >= 1.4 ? 'up' : (s.vol_ratio < 0.75 ? 'accent' : '');
   const ma20sign = (s.sma20_pct ?? 0) >= 0 ? '+' : '';
+  const fib      = s.fib_ratio ?? null;
+  const fibLabel = fib == null ? '--' : fib <= 0.382 ? '極淺，主力護盤' : fib <= 0.5 ? '未逾一半，多頭穩' : fib <= 0.618 ? '黃金分割位' : '深回測';
+  const fibCls   = fib == null ? '' : fib <= 0.382 ? 'accent' : fib <= 0.5 ? 'up' : fib <= 0.618 ? 'gold' : 'dn';
   document.getElementById('dtIndicators').innerHTML = `
     <div class="ind-item"><div class="ind-label">RSI (14)</div><div class="ind-val ${rsiCls}">${s.rsi?.toFixed(1) ?? '--'} · ${rsiLabel}</div></div>
     <div class="ind-item"><div class="ind-label">MACD 狀態</div><div class="ind-val ${macdCls}">${escHtml(s.macd_status || '--')}</div></div>
-    <div class="ind-item"><div class="ind-label">近三月高點回撤</div><div class="ind-val dn">▼ ${s.pullback_pct?.toFixed(1) ?? '--'}%</div></div>
-    <div class="ind-item"><div class="ind-label">量能比 (5日/30日)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
-    <div class="ind-item"><div class="ind-label">vs 月線 (MA20)</div><div class="ind-val ${(s.sma20_pct ?? 0) >= 0 ? 'up' : 'dn'}">${ma20sign}${s.sma20_pct?.toFixed(1) ?? '--'}%</div></div>
-    <div class="ind-item"><div class="ind-label">3月高點</div><div class="ind-val">${s.high_3m?.toFixed(2) ?? '--'}</div></div>`;
+    <div class="ind-item"><div class="ind-label">回檔幅度</div><div class="ind-val dn">▼ ${s.pullback_pct?.toFixed(1) ?? '--'}%</div></div>
+    <div class="ind-item"><div class="ind-label">飆漲幅度</div><div class="ind-val up">▲ ${s.rally_pct?.toFixed(1) ?? '--'}%</div></div>
+    <div class="ind-item"><div class="ind-label">Fib 回測比</div><div class="ind-val ${fibCls}">${fib != null ? (fib*100).toFixed(0)+'%' : '--'} · ${fibLabel}</div></div>
+    <div class="ind-item"><div class="ind-label">量能比 (5/30日)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
+    <div class="ind-item"><div class="ind-label">vs 月線 (MA21)</div><div class="ind-val ${(s.sma20_pct ?? 0) >= 0 ? 'up' : 'dn'}">${ma20sign}${s.sma20_pct?.toFixed(1) ?? '--'}%</div></div>
+    <div class="ind-item"><div class="ind-label">飆高點</div><div class="ind-val">${s.high_3m?.toFixed(2) ?? '--'}</div></div>`;
 
   const strats = s.strategies || [];
   const chips = [];
-  if (strats.includes('低檔量增')) chips.push(`<span class="strat-chip vol">📊 低檔量增</span>`);
-  if (strats.includes('法人買超')) chips.push(`<span class="strat-chip inst">🏦 三大法人買超</span>`);
+  if (strats.includes('縮量回檔'))   chips.push(`<span class="strat-chip vol">📉 縮量回檔</span>`);
+  if (strats.includes('低檔量增'))   chips.push(`<span class="strat-chip vol">📊 低檔量增</span>`);
+  if (strats.includes('淺回測'))     chips.push(`<span class="strat-chip fib">📐 Fib 淺回測</span>`);
+  if (strats.includes('均線守支撐')) chips.push(`<span class="strat-chip ma">📏 均線守支撐</span>`);
+  if (strats.includes('法人買超'))   chips.push(`<span class="strat-chip inst">🏦 三大法人買超</span>`);
   if (strats.some(t => t.startsWith('題材:'))) {
     const t = strats.find(t => t.startsWith('題材:'))?.replace('題材:','') || '';
     chips.push(`<span class="strat-chip theme">🔬 ${escHtml(t)}</span>`);

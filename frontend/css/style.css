@@ -244,6 +244,7 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .strat-tag.vol   { background: rgba(56,139,253,.12);  color: var(--accent); }
 .strat-tag.inst  { background: rgba(248,81,73,.12);   color: var(--up); }
 .strat-tag.theme { background: rgba(188,141,230,.12); color: #bc8de6; }
+.strat-tag.fib   { background: rgba(210,153,34,.12);  color: var(--gold); }
 
 /* ── Recommendation Cards ───────────────────────────── */
 .rec-cards {
@@ -314,6 +315,11 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   padding: 3px 7px; border-radius: 5px;
   width: fit-content;
 }
+.card-rally {
+  font-size: 10px; font-weight: 600;
+  color: var(--up); background: var(--up-bg);
+  padding: 1px 5px; border-radius: 4px; margin-left: 4px;
+}
 .score-bar { margin-top: 9px; }
 .score-label {
   display: flex; justify-content: space-between;
@@ -332,10 +338,12 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   font-size: 10px; padding: 2px 6px; border-radius: 4px; font-weight: 600;
   background: var(--bg3); color: var(--txt2);
 }
-.tag.bull { background: var(--up-bg);  color: var(--up); }
-.tag.bear { background: var(--dn-bg);  color: var(--dn); }
-.tag.blue { background: rgba(56,139,253,.12); color: var(--accent); }
+.tag.bull   { background: var(--up-bg);  color: var(--up); }
+.tag.bear   { background: var(--dn-bg);  color: var(--dn); }
+.tag.blue   { background: rgba(56,139,253,.12);  color: var(--accent); }
 .tag.purple { background: rgba(188,141,230,.12); color: #bc8de6; }
+.tag.gold   { background: rgba(210,153,34,.12);  color: var(--gold); }
+.tag.green  { background: rgba(63,185,80,.12);   color: var(--up); }
 
 .card-reason {
   margin-top: 7px; font-size: 11px; color: var(--txt2); line-height: 1.4;
@@ -571,6 +579,8 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .strat-chip.inst  { background: rgba(248,81,73,.1);   color: var(--up);     border-color: rgba(248,81,73,.3); }
 .strat-chip.theme { background: rgba(188,141,230,.1); color: #bc8de6;       border-color: rgba(188,141,230,.3); }
 .strat-chip.macd  { background: rgba(210,153,34,.1);  color: var(--gold);   border-color: rgba(210,153,34,.3); }
+.strat-chip.fib   { background: rgba(210,153,34,.1);  color: var(--gold);   border-color: rgba(210,153,34,.3); }
+.strat-chip.ma    { background: rgba(63,185,80,.1);   color: var(--up);     border-color: rgba(63,185,80,.3); }
 
 .detail-actions {
   margin-top: 18px; padding-top: 14px;

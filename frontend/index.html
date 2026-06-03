@@ -1,0 +1,170 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+  <meta name="theme-color" content="#0d1117" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <title>飆股雷達</title>
+  <link rel="stylesheet" href="css/style.css" />
+  <script src="https://unpkg.com/lightweight-charts/dist/lightweight-charts.standalone.production.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+
+<!-- ───── HEADER ───── -->
+<header class="header">
+  <div class="logo">
+    <div class="logo-mark">飆</div>
+    <div class="logo-text">
+      <span class="logo-title">飆股雷達</span>
+      <span class="logo-sub">台股智能分析</span>
+    </div>
+  </div>
+  <div class="ticker-bar" id="tickerBar">
+    <span class="ticker-loading">載入中…</span>
+  </div>
+  <div class="header-right">
+    <span class="update-time" id="updateTime">--:--</span>
+    <button class="btn-refresh" id="btnRefresh" onclick="refreshAll()">↺</button>
+  </div>
+</header>
+
+<!-- ───── DASHBOARD ───── -->
+<div class="dashboard" id="dashboard">
+
+  <!-- LEFT: News -->
+  <aside class="panel panel-news" id="pageNews" data-page="news">
+    <div class="panel-head">
+      <span class="panel-title">財經新聞</span>
+      <div class="tab-row">
+        <button class="tab on"  onclick="filterNews('all',this)">全部</button>
+        <button class="tab" onclick="filterNews('科技產業',this)">科技</button>
+        <button class="tab" onclick="filterNews('建廠投資',this)">建廠</button>
+        <button class="tab" onclick="filterNews('法人動向',this)">法人</button>
+        <button class="tab" onclick="filterNews('受惠股',this)">受惠</button>
+      </div>
+    </div>
+    <div class="news-list" id="newsList">
+      <div class="skeleton"><div class="sk-row"></div><div class="sk-row sm"></div></div>
+      <div class="skeleton"><div class="sk-row"></div><div class="sk-row sm"></div></div>
+      <div class="skeleton"><div class="sk-row"></div><div class="sk-row sm"></div></div>
+    </div>
+  </aside>
+
+  <!-- CENTER: Main -->
+  <main class="main-area" id="mainArea">
+
+    <!-- Recommendations -->
+    <section class="rec-section" id="pageRecs" data-page="recs">
+      <div class="sec-head">
+        <div class="sec-title-row">
+          <h2 class="sec-title">今日精選回檔股</h2>
+          <span class="date-badge" id="recDate">--</span>
+        </div>
+        <div class="sec-notice">⚠ 回檔修正・逢低布局・非追高</div>
+      </div>
+      <!-- Strategy legend -->
+      <div class="strategy-legend">
+        <span class="strat-tag vol">📊 低檔量增</span>
+        <span class="strat-tag inst">🏦 法人買超</span>
+        <span class="strat-tag theme">🔬 題材前景</span>
+      </div>
+      <div class="rec-cards" id="recCards">
+        <div class="rec-loading">
+          <div class="spinner"></div>
+          <p>分析台股回檔機會中…<br><small>首次約需 1–2 分鐘</small></p>
+        </div>
+      </div>
+    </section>
+
+    <!-- K-Line Chart -->
+    <section class="chart-section" id="pageChart" data-page="chart">
+      <div class="sec-head">
+        <div class="sec-title-row">
+          <h2 class="sec-title" id="chartTitle">K 線圖</h2>
+          <div class="stock-meta" id="stockMeta" style="display:none">
+            <span class="meta-price" id="metaPrice">--</span>
+            <span class="meta-change" id="metaChange">--</span>
+          </div>
+        </div>
+        <div class="period-row">
+          <button class="period-btn"    onclick="changePeriod('1mo',this)">1M</button>
+          <button class="period-btn on" onclick="changePeriod('3mo',this)">3M</button>
+          <button class="period-btn"    onclick="changePeriod('6mo',this)">6M</button>
+          <button class="period-btn"    onclick="changePeriod('1y',this)">1Y</button>
+        </div>
+      </div>
+      <div id="klineChart" class="kline-chart">
+        <div class="chart-hint">
+          <svg width="32" height="32" fill="none" stroke="currentColor" stroke-width="1.5" viewBox="0 0 24 24">
+            <polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/>
+          </svg>
+          <span>點選推薦股票查看 K 線</span>
+        </div>
+      </div>
+      <div id="volChart" class="vol-chart" style="display:none"></div>
+    </section>
+
+  </main>
+
+  <!-- RIGHT: Institutional -->
+  <aside class="panel panel-inst" id="pageInst" data-page="inst">
+    <div class="panel-head">
+      <span class="panel-title">三大法人</span>
+      <div class="tab-row">
+        <button class="tab on" onclick="switchInst('total',this)">合計</button>
+        <button class="tab" onclick="switchInst('foreign',this)">外資</button>
+        <button class="tab" onclick="switchInst('trust',this)">投信</button>
+      </div>
+    </div>
+    <div class="inst-summary">
+      <div class="sum-card"><div class="sum-label">外資</div><div class="sum-val" id="sumForeign">--</div></div>
+      <div class="sum-card"><div class="sum-label">投信</div><div class="sum-val" id="sumTrust">--</div></div>
+      <div class="sum-card"><div class="sum-label">自營商</div><div class="sum-val" id="sumDealer">--</div></div>
+    </div>
+    <div class="inst-chart-wrap"><canvas id="instChart"></canvas></div>
+    <div class="inst-list-head"><span>名稱</span><span>買超(千股)</span></div>
+    <div class="inst-list" id="instList"><div class="loading-text">載入中…</div></div>
+  </aside>
+
+</div><!-- /dashboard -->
+
+<!-- ───── MOBILE BOTTOM NAV ───── -->
+<nav class="bottom-nav" id="bottomNav">
+  <button class="bnav-btn on" data-page="recs" onclick="showPage('recs',this)">
+    <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+    </svg>
+    <span>推薦</span>
+  </button>
+  <button class="bnav-btn" data-page="chart" onclick="showPage('chart',this)">
+    <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <rect x="3" y="3" width="18" height="18" rx="2"/><line x1="9" y1="9" x2="9" y2="15"/>
+      <line x1="12" y1="6" x2="12" y2="15"/><line x1="15" y1="12" x2="15" y2="15"/>
+    </svg>
+    <span>K線</span>
+  </button>
+  <button class="bnav-btn" data-page="inst" onclick="showPage('inst',this)">
+    <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <rect x="2" y="7" width="6" height="13" rx="1"/><rect x="9" y="3" width="6" height="17" rx="1"/>
+      <rect x="16" y="10" width="6" height="10" rx="1"/>
+    </svg>
+    <span>法人</span>
+  </button>
+  <button class="bnav-btn" data-page="news" onclick="showPage('news',this)">
+    <svg width="22" height="22" fill="none" stroke="currentColor" stroke-width="1.8" viewBox="0 0 24 24">
+      <path d="M19 3H5a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2V5a2 2 0 00-2-2z"/>
+      <line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/>
+      <line x1="8" y1="16" x2="12" y2="16"/>
+    </svg>
+    <span>新聞</span>
+  </button>
+</nav>
+
+<script src="js/charts.js"></script>
+<script src="js/news.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>

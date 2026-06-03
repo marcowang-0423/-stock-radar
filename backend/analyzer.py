@@ -234,7 +234,8 @@ def analyze_stock(symbol: str, inst_buy_set: set = None) -> Optional[Dict]:
         'macd_status': macd_label,
         'vol_ratio': round(vol_ratio, 2),
         'strategies': strategies_hit,
-        'reasons': reasons[:3],
+        'reasons': reasons,
+        'sma20_pct': round((current - sma20_now) / sma20_now * 100, 1) if sma20_now else 0,
         'risk': risk,
     }
 

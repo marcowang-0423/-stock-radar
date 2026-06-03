@@ -2,7 +2,8 @@
 
 let _currentSymbol = null;
 let _currentPeriod = '3mo';
-let _activePage    = 'recs';   // mobile active tab
+let _activePage    = 'recs';
+let _recData       = [];
 
 // ── Init ──────────────────────────────────────────────────
 async function init() {
@@ -112,8 +113,13 @@ async function loadRecommendations() {
       return;
     }
 
+    _recData = stocks;
     renderRecCards(stocks);
-    if (stocks.length > 0) selectStock(stocks[0].symbol);
+    if (stocks.length > 0) {
+      _currentSymbol = stocks[0].symbol;
+      document.getElementById(`card-${stocks[0].symbol}`)?.classList.add('active');
+      loadKline(stocks[0].symbol, _currentPeriod);
+    }
 
   } catch {
     document.getElementById('recCards').innerHTML =
@@ -145,7 +151,7 @@ function buildCard(s) {
   const macdCls = ['黃金交叉','即將交叉','多頭'].includes(s.macd_status) ? 'bull' : '';
   const reason  = (s.reasons || []).slice(0,2).join(' · ') || '等待確認訊號';
 
-  return `<div class="stock-card" id="card-${s.symbol}" onclick="selectStock('${s.symbol}')">
+  return `<div class="stock-card" id="card-${s.symbol}" onclick="openDetail('${s.symbol}')">
     <div class="risk-dot ${s.risk || 'medium'}" title="風險：${riskLabel(s.risk)}"></div>
     <div class="card-sym">${s.symbol}</div>
     <div class="card-name">${escHtml(s.name || s.symbol)}</div>
@@ -172,16 +178,87 @@ function buildCard(s) {
 
 function riskLabel(r) { return { low:'低', medium:'中', high:'高' }[r] || '中'; }
 
-// ── Select Stock ──────────────────────────────────────────
-async function selectStock(symbol) {
+// ── Select Stock (internal, no modal) ────────────────────
+function selectStock(symbol) {
   if (_currentSymbol) {
     document.getElementById(`card-${_currentSymbol}`)?.classList.remove('active');
   }
   _currentSymbol = symbol;
   document.getElementById(`card-${symbol}`)?.classList.add('active');
   document.getElementById(`card-${symbol}`)?.scrollIntoView({ behavior:'smooth', block:'nearest', inline:'center' });
+  loadKline(symbol, _currentPeriod);
+}
 
-  await loadKline(symbol, _currentPeriod);
+// ── Detail Modal ──────────────────────────────────────────
+function openDetail(symbol) {
+  selectStock(symbol);
+  const s = _recData.find(r => r.symbol === symbol);
+  if (!s) return;
+
+  document.getElementById('dtSym').textContent  = s.symbol;
+  document.getElementById('dtName').textContent = s.name || s.symbol;
+  const themeEl = document.getElementById('dtTheme');
+  themeEl.textContent = s.theme || '';
+  themeEl.style.display = s.theme ? 'inline-block' : 'none';
+  document.getElementById('dtPrice').textContent    = s.current?.toFixed(2) ?? '--';
+  document.getElementById('dtPullback').textContent = `▼${s.pullback_pct?.toFixed(1) ?? '--'}%`;
+  document.getElementById('dtScore').textContent    = s.score ?? '--';
+
+  const riskMap = { low: ['低風險', 'low-risk'], medium: ['中風險', 'med-risk'], high: ['高風險', 'high-risk'] };
+  const [rLabel, rCls] = riskMap[s.risk] || ['中風險', 'med-risk'];
+  const rEl = document.getElementById('dtRisk');
+  rEl.textContent = rLabel;
+  rEl.className = `ps-val ${rCls}`;
+
+  const reasons = s.reasons || [];
+  document.getElementById('dtReasons').innerHTML = reasons.length
+    ? reasons.map(r => `<li>${escHtml(r)}</li>`).join('')
+    : '<li>等待更多技術確認訊號</li>';
+
+  const rsiLabel = s.rsi < 30 ? '超賣區' : s.rsi < 50 ? '低檔整理' : s.rsi < 65 ? '中性' : '偏高';
+  const rsiCls   = s.rsi < 50 ? 'accent' : 'up';
+  const macdCls  = ['黃金交叉','即將交叉','多頭'].includes(s.macd_status) ? 'gold' : '';
+  const volCls   = s.vol_ratio >= 1.4 ? 'up' : '';
+  const ma20sign = (s.sma20_pct ?? 0) >= 0 ? '+' : '';
+  document.getElementById('dtIndicators').innerHTML = `
+    <div class="ind-item"><div class="ind-label">RSI (14)</div><div class="ind-val ${rsiCls}">${s.rsi?.toFixed(1) ?? '--'} · ${rsiLabel}</div></div>
+    <div class="ind-item"><div class="ind-label">MACD 狀態</div><div class="ind-val ${macdCls}">${escHtml(s.macd_status || '--')}</div></div>
+    <div class="ind-item"><div class="ind-label">近三月高點回撤</div><div class="ind-val dn">▼ ${s.pullback_pct?.toFixed(1) ?? '--'}%</div></div>
+    <div class="ind-item"><div class="ind-label">量能比 (5日/30日)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
+    <div class="ind-item"><div class="ind-label">vs 月線 (MA20)</div><div class="ind-val ${(s.sma20_pct ?? 0) >= 0 ? 'up' : 'dn'}">${ma20sign}${s.sma20_pct?.toFixed(1) ?? '--'}%</div></div>
+    <div class="ind-item"><div class="ind-label">3月高點</div><div class="ind-val">${s.high_3m?.toFixed(2) ?? '--'}</div></div>`;
+
+  const strats = s.strategies || [];
+  const chips = [];
+  if (strats.includes('低檔量增')) chips.push(`<span class="strat-chip vol">📊 低檔量增</span>`);
+  if (strats.includes('法人買超')) chips.push(`<span class="strat-chip inst">🏦 三大法人買超</span>`);
+  if (strats.some(t => t.startsWith('題材:'))) {
+    const t = strats.find(t => t.startsWith('題材:'))?.replace('題材:','') || '';
+    chips.push(`<span class="strat-chip theme">🔬 ${escHtml(t)}</span>`);
+  }
+  if (['黃金交叉','即將交叉'].includes(s.macd_status)) chips.push(`<span class="strat-chip macd">📈 MACD ${escHtml(s.macd_status)}</span>`);
+  const stratSec = document.getElementById('dtStratSection');
+  if (chips.length) {
+    document.getElementById('dtStrats').innerHTML = chips.join('');
+    stratSec.style.display = '';
+  } else {
+    stratSec.style.display = 'none';
+  }
+
+  document.getElementById('detailOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+}
+
+function closeDetail() {
+  document.getElementById('detailOverlay').classList.remove('open');
+  document.body.style.overflow = '';
+}
+
+function gotoKline() {
+  closeDetail();
+  if (window.innerWidth < 1024) {
+    showPage('chart', document.querySelector('.bnav-btn[data-page="chart"]'));
+  }
 }
 
 async function changePeriod(period, btn) {

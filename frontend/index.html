@@ -163,6 +163,51 @@
   </button>
 </nav>
 
+<!-- ───── STOCK DETAIL MODAL ───── -->
+<div class="detail-overlay" id="detailOverlay" onclick="closeDetail()">
+  <div class="detail-sheet" id="detailSheet" onclick="event.stopPropagation()">
+    <div class="detail-drag-handle"></div>
+    <div class="detail-header">
+      <div>
+        <div class="detail-sym-row">
+          <span class="detail-sym" id="dtSym">--</span>
+          <span class="detail-name" id="dtName">--</span>
+        </div>
+        <span class="detail-theme-badge" id="dtTheme"></span>
+      </div>
+      <button class="detail-close" onclick="closeDetail()">✕</button>
+    </div>
+
+    <div class="detail-price-bar">
+      <span class="detail-price" id="dtPrice">--</span>
+      <div class="detail-price-stats">
+        <div class="price-stat"><span class="ps-label">回撤</span><span class="ps-val dn" id="dtPullback">--</span></div>
+        <div class="price-stat"><span class="ps-label">分析分數</span><span class="ps-val accent" id="dtScore">--</span></div>
+        <div class="price-stat"><span class="ps-label">風險</span><span class="ps-val" id="dtRisk">--</span></div>
+      </div>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-sec-title">📋 推薦理由</div>
+      <ul class="detail-reasons" id="dtReasons"></ul>
+    </div>
+
+    <div class="detail-section">
+      <div class="detail-sec-title">📊 技術指標</div>
+      <div class="detail-indicators" id="dtIndicators"></div>
+    </div>
+
+    <div class="detail-section" id="dtStratSection">
+      <div class="detail-sec-title">🎯 策略命中</div>
+      <div class="detail-strats" id="dtStrats"></div>
+    </div>
+
+    <div class="detail-actions">
+      <button class="btn-kline-goto" onclick="gotoKline()">查看 K 線圖 →</button>
+    </div>
+  </div>
+</div>
+
 <script src="js/charts.js"></script>
 <script src="js/news.js"></script>
 <script src="js/main.js"></script>

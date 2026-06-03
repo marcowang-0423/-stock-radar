@@ -1,6 +1,8 @@
 import requests
 import yfinance as yf
 import pandas as pd
+import concurrent.futures
+from collections import Counter
 from datetime import datetime, timedelta
 
 HEADERS = {
@@ -8,85 +10,105 @@ HEADERS = {
     'Accept': 'application/json',
 }
 
-def _clean_num(s: str) -> int:
-    try:
-        return int(str(s).replace(',', '').replace('+', '').strip())
-    except:
-        return 0
+# Theme stocks to track for 三大法人 panel
+_INST_SYMBOLS = [
+    '2330', '2303', '2454', '3034', '2379', '3711', '5483', '6488',
+    '3596', '2344', '2317', '2382', '6669', '3231', '4938',
+    '2308', '2207', '1519', '1590', '2395', '6505', '1303',
+    '3037', '2376', '3008', '2345',
+]
+
 
 def fetch_institutional_data(date: str = None) -> dict:
-    """Fetch 三大法人 data from TWSE T86 API"""
-    attempts = []
-    if date:
-        attempts = [date]
-    else:
-        d = datetime.now()
-        for _ in range(7):
-            if d.weekday() < 5:
-                attempts.append(d.strftime("%Y%m%d"))
-            d -= timedelta(days=1)
+    """Fetch 三大法人 data from FinMind API for theme stocks.
+    TWSE T86 endpoint was deprecated; FinMind provides per-stock institutional trading data.
+    """
+    from analyzer import STOCK_NAMES
 
-    for attempt_date in attempts:
+    # FinMind uses YYYY-MM-DD; accept YYYYMMDD from legacy callers
+    if date and len(date) == 8 and date.isdigit():
+        start_date = f"{date[:4]}-{date[4:6]}-{date[6:]}"
+    elif date:
+        start_date = date
+    else:
+        start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+
+    def _fetch_single(symbol):
         try:
             url = (
-                f"https://www.twse.com.tw/fund/T86"
-                f"?response=json&date={attempt_date}&selectType=ALL"
+                'https://api.finmindtrade.com/api/v4/data'
+                '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+                f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=15, headers=HEADERS)
+            resp = requests.get(url, timeout=12, headers=HEADERS)
             body = resp.json()
+            if body.get('status') != 200 or not body.get('data'):
+                return None
 
-            if body.get('stat') != 'OK' or not body.get('data'):
-                continue
+            records = body['data']
+            latest_date = max(r['date'] for r in records)
+            day_recs = [r for r in records if r['date'] == latest_date]
 
-            fields = body.get('fields', [])
-
-            def idx(name, fallback):
-                try:
-                    return fields.index(name)
-                except ValueError:
-                    return fallback
-
-            fi = idx('外陸資淨買賣超股數', 4)
-            ti = idx('投信淨買賣超股數', 7)
-            di = idx('自營商淨買賣超股數', 12)
-            total_i = idx('三大法人買賣超股數合計', 13)
-
-            rows = []
-            for row in body['data']:
-                try:
-                    rows.append({
-                        'symbol': row[0].strip(),
-                        'name': row[1].strip(),
-                        'foreign_net': _clean_num(row[fi]) if len(row) > fi else 0,
-                        'trust_net': _clean_num(row[ti]) if len(row) > ti else 0,
-                        'dealer_net': _clean_num(row[di]) if len(row) > di else 0,
-                        'total_net': _clean_num(row[total_i]) if len(row) > total_i else 0,
-                    })
-                except Exception:
-                    continue
-
-            rows.sort(key=lambda x: x['total_net'], reverse=True)
-
-            summary = {
-                'foreign_total': sum(r['foreign_net'] for r in rows),
-                'trust_total': sum(r['trust_net'] for r in rows),
-                'dealer_total': sum(r['dealer_net'] for r in rows),
-                'buy_count': sum(1 for r in rows if r['total_net'] > 0),
-                'sell_count': sum(1 for r in rows if r['total_net'] < 0),
-            }
+            foreign_net = trust_net = dealer_net = 0
+            for r in day_recs:
+                net = r['buy'] - r['sell']
+                name = r['name']
+                if name in ('Foreign_Investor', 'Foreign_Dealer_Self'):
+                    foreign_net += net
+                elif name == 'Investment_Trust':
+                    trust_net = net
+                elif name in ('Dealer_self', 'Dealer_Hedging'):
+                    dealer_net += net
 
             return {
-                'date': attempt_date,
-                'top_buy': rows[:15],
-                'top_sell': sorted(rows, key=lambda x: x['total_net'])[:10],
-                'summary': summary,
+                'symbol': symbol,
+                'name': STOCK_NAMES.get(symbol, symbol),
+                'foreign_net': foreign_net,
+                'trust_net': trust_net,
+                'dealer_net': dealer_net,
+                'total_net': foreign_net + trust_net + dealer_net,
+                'date': latest_date,
             }
-
         except Exception as e:
-            print(f"TWSE fetch error ({attempt_date}): {e}")
-            continue
+            print(f'FinMind inst error {symbol}: {e}')
+            return None
 
-    return {'error': '無法取得三大法人資料，可能為假日或休市', 'date': date}
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_fetch_single, sym): sym for sym in _INST_SYMBOLS}
+        done, _ = concurrent.futures.wait(futs, timeout=45)
+        rows = []
+        for f in done:
+            try:
+                r = f.result(timeout=2)
+                if r:
+                    rows.append(r)
+            except Exception:
+                pass
+
+    if not rows:
+        return {'error': '無法取得三大法人資料，可能為假日或休市', 'date': date}
+
+    # Align to the most common date (latest trading day)
+    best_date = Counter(r['date'] for r in rows).most_common(1)[0][0]
+    rows = [r for r in rows if r['date'] == best_date]
+    rows.sort(key=lambda x: x['total_net'], reverse=True)
+
+    summary = {
+        'foreign_total': sum(r['foreign_net'] for r in rows),
+        'trust_total':   sum(r['trust_net']   for r in rows),
+        'dealer_total':  sum(r['dealer_net']  for r in rows),
+        'buy_count':  sum(1 for r in rows if r['total_net'] > 0),
+        'sell_count': sum(1 for r in rows if r['total_net'] < 0),
+    }
+
+    print(f'[Inst] {best_date}: {len(rows)} stocks, buy={summary["buy_count"]} sell={summary["sell_count"]}')
+
+    return {
+        'date':     best_date,
+        'top_buy':  rows[:15],
+        'top_sell': sorted(rows, key=lambda x: x['total_net'])[:10],
+        'summary':  summary,
+    }
 
 
 def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:

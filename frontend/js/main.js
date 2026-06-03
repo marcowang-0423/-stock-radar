@@ -63,14 +63,18 @@ function showPage(name, btn) {
     recs.style.display = 'flex';
   } else if (name === 'chart') {
     chart.classList.add('m-on');
-    // Re-render chart after becoming visible
     setTimeout(() => {
       if (_currentSymbol) loadKline(_currentSymbol, _currentPeriod);
-    }, 80);
+    }, 150);
   } else if (name === 'news') {
     news.classList.add('m-on');
   } else if (name === 'inst') {
     inst.classList.add('m-on');
+    setTimeout(() => {
+      if (typeof _instData !== 'undefined' && _instData && !_instData.error) {
+        _renderInstChart(_instData);
+      }
+    }, 150);
   }
 
   // Update nav highlight

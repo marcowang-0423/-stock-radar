@@ -101,13 +101,17 @@ def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:
 
             candles = []
             for ts, row in hist.iterrows():
+                try:
+                    date_str = ts.tz_convert('Asia/Taipei').strftime('%Y-%m-%d')
+                except Exception:
+                    date_str = ts.strftime('%Y-%m-%d')
                 candles.append({
-                    'time': int(ts.timestamp()),
+                    'time': date_str,
                     'open': round(float(row['Open']), 2),
                     'high': round(float(row['High']), 2),
                     'low': round(float(row['Low']), 2),
                     'close': round(float(row['Close']), 2),
-                    'volume': int(row['Volume'] / 1000),  # 張
+                    'volume': int(row['Volume'] / 1000),
                 })
 
             closes = hist['Close'].values
@@ -119,12 +123,18 @@ def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:
             sma20 = hist['Close'].rolling(20).mean().dropna()
             sma60 = hist['Close'].rolling(60).mean().dropna()
 
+            def _ts_to_date(ts):
+                try:
+                    return ts.tz_convert('Asia/Taipei').strftime('%Y-%m-%d')
+                except Exception:
+                    return ts.strftime('%Y-%m-%d')
+
             ma20_line = [
-                {'time': int(ts.timestamp()), 'value': round(float(v), 2)}
+                {'time': _ts_to_date(ts), 'value': round(float(v), 2)}
                 for ts, v in sma20.items()
             ]
             ma60_line = [
-                {'time': int(ts.timestamp()), 'value': round(float(v), 2)}
+                {'time': _ts_to_date(ts), 'value': round(float(v), 2)}
                 for ts, v in sma60.items()
             ]
 

@@ -72,10 +72,10 @@ function showPage(name, btn) {
   } else if (name === 'inst') {
     inst.classList.add('m-on');
     setTimeout(() => {
-      if (typeof _instData !== 'undefined' && _instData && !_instData.error) {
+      if (_instData && !_instData.error) {
         _renderInstChart(_instData);
       }
-    }, 150);
+    }, 300);
   }
 
   // Update nav highlight

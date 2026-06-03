@@ -204,10 +204,14 @@ function _renderInstChart(data) {
   const values = sorted.map(r => Math.round((r[key] || 0) / 1000));  // → 千股
   const colors = values.map(v => v >= 0 ? 'rgba(248,81,73,.75)' : 'rgba(63,185,80,.75)');
 
-  const ctx = document.getElementById('instChart');
-  if (!ctx) return;
+  const wrap = document.querySelector('.inst-chart-wrap');
+  if (!wrap) return;
 
   if (_instChart) { _instChart.destroy(); _instChart = null; }
+
+  // Replace canvas to clear any stale 0-height dimensions from hidden-panel render
+  wrap.innerHTML = '<canvas id="instChart"></canvas>';
+  const ctx = document.getElementById('instChart');
 
   _instChart = new Chart(ctx, {
     type: 'bar',

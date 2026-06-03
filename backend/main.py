@@ -6,6 +6,7 @@ from datetime import datetime
 
 from fastapi import FastAPI, Query
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 app = FastAPI(title="飆股雷達 API", version="1.0")
@@ -97,10 +98,23 @@ async def get_kline(symbol: str, period: str = Query("3mo")):
     return data
 
 
-# Serve frontend static files last
 _frontend = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "frontend")
 if os.path.exists(_frontend):
-    app.mount("/", StaticFiles(directory=_frontend, html=True), name="frontend")
+    for _sub in ("css", "js", "img"):
+        _d = os.path.join(_frontend, _sub)
+        if os.path.exists(_d):
+            app.mount(f"/{_sub}", StaticFiles(directory=_d), name=_sub)
+
+    @app.get("/")
+    async def _index():
+        return FileResponse(os.path.join(_frontend, "index.html"))
+
+    @app.get("/{full_path:path}")
+    async def _static_catch(full_path: str):
+        p = os.path.join(_frontend, full_path)
+        if os.path.isfile(p):
+            return FileResponse(p)
+        return FileResponse(os.path.join(_frontend, "index.html"))
 
 
 if __name__ == "__main__":

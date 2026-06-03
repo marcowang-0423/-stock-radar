@@ -128,10 +128,10 @@ def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:
                 for ts, v in sma60.items()
             ]
 
-            info = ticker.info
+            from analyzer import STOCK_NAMES
             return {
                 'symbol': symbol,
-                'name': info.get('shortName', info.get('longName', symbol)),
+                'name': STOCK_NAMES.get(symbol, symbol),
                 'market': suffix[1:],
                 'candles': candles,
                 'ma20': ma20_line,

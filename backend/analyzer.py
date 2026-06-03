@@ -1,7 +1,7 @@
-import re
 import yfinance as yf
 import pandas as pd
 import numpy as np
+import concurrent.futures
 from typing import Optional, Dict, List
 import warnings
 warnings.filterwarnings('ignore')
@@ -82,7 +82,6 @@ def analyze_stock(symbol: str, inst_buy_set: set = None) -> Optional[Dict]:
     3. 基本面+題材: structural theme bonus (AI, semiconductor, EV, green energy)
     """
     hist = None
-    market_suffix = None
 
     for suffix in ['.TW', '.TWO']:
         try:
@@ -90,7 +89,6 @@ def analyze_stock(symbol: str, inst_buy_set: set = None) -> Optional[Dict]:
             h = t.history(period="6mo", interval="1d", auto_adjust=True)
             if not h.empty and len(h) >= 40:
                 hist = h
-                market_suffix = suffix
                 break
         except Exception:
             continue
@@ -219,16 +217,6 @@ def analyze_stock(symbol: str, inst_buy_set: set = None) -> Optional[Dict]:
         return None
 
     name = STOCK_NAMES.get(symbol, symbol)
-    if name == symbol:
-        try:
-            info = yf.Ticker(f"{symbol}{market_suffix}").info
-            raw = info.get('shortName', info.get('longName', symbol))
-            name = re.sub(
-                r'\s*(Co\.,?\s*Ltd\.?|Corp\.?|Inc\.?|Holdings?|Technology).*',
-                '', raw, flags=re.I,
-            ).strip() or symbol
-        except Exception:
-            pass
 
     macd_label = '黃金交叉' if golden else ('即將交叉' if converge else ('多頭' if macd_now > msig_now else '整理'))
     risk = 'low' if pullback_pct > 15 and rsi_now < 50 else ('medium' if pullback_pct > 8 else 'high')
@@ -252,7 +240,6 @@ def analyze_stock(symbol: str, inst_buy_set: set = None) -> Optional[Dict]:
 
 
 def get_daily_recommendations() -> List[Dict]:
-    # Get today's institutional buy set for cross-referencing
     inst_buy_set: set = set()
     try:
         from data_fetcher import fetch_institutional_data
@@ -266,21 +253,23 @@ def get_daily_recommendations() -> List[Dict]:
     except Exception as e:
         print(f"[Analyzer] Could not load institutional data: {e}")
 
+    print(f"[Analyzer] Screening {len(STOCK_UNIVERSE)} stocks in parallel...")
     results = []
-    total = len(STOCK_UNIVERSE)
-    print(f"[Analyzer] Screening {total} stocks...")
 
-    for i, symbol in enumerate(STOCK_UNIVERSE):
-        try:
-            result = analyze_stock(symbol, inst_buy_set)
-            if result:
-                results.append(result)
-                strats = ','.join(result['strategies']) or '-'
-                print(f"  ✓ {symbol} ({result['name']}) score={result['score']} [{strats}]")
-        except Exception as e:
-            print(f"  ✗ {symbol}: {e}")
-        if (i + 1) % 15 == 0:
-            print(f"  Progress {i+1}/{total}")
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futures = {pool.submit(analyze_stock, sym, inst_buy_set): sym for sym in STOCK_UNIVERSE}
+        done, pending = concurrent.futures.wait(futures, timeout=90)
+        for f in pending:
+            f.cancel()
+        for f in done:
+            sym = futures[f]
+            try:
+                result = f.result(timeout=2)
+                if result:
+                    results.append(result)
+                    print(f"  ✓ {sym} score={result['score']}")
+            except Exception as e:
+                print(f"  ✗ {sym}: {e}")
 
     results.sort(key=lambda x: x['score'], reverse=True)
     print(f"[Analyzer] Done. {len(results)} qualifying stocks.")

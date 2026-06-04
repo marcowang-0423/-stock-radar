@@ -51,7 +51,7 @@ async def get_indices():
 @app.get("/api/news")
 async def get_news():
     from news_fetcher import fetch_all_news
-    if not _stale("news", 1800):
+    if not _stale("news", 300):
         return {"data": _cache["news"]}
     data = await _run(fetch_all_news)
     _cache["news"] = data

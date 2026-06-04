@@ -28,7 +28,7 @@ async function init() {
     loadInstitutional(),
   ]);
 
-  setInterval(() => { loadIndices(); loadNews(); }, 30 * 60_000);
+  setInterval(() => { loadIndices(); loadNews(); }, 5 * 60_000);
 }
 
 function updateClock() {
@@ -200,6 +200,10 @@ function openDetail(symbol) {
   const s = _recData.find(r => r.symbol === symbol);
   if (!s) return;
 
+  // Reset label that openScreenDetail may have changed
+  document.getElementById('dtPullbackLabel').textContent = '回撤';
+  document.getElementById('dtPullback').className = 'ps-val dn';
+
   document.getElementById('dtSym').textContent  = s.symbol;
   document.getElementById('dtName').textContent = s.name || s.symbol;
   const themeEl = document.getElementById('dtTheme');
@@ -346,7 +350,7 @@ function buildEntryCard(s) {
   const sign = s.change_pct >= 0 ? '+' : '';
   const cls  = s.change_pct >= 0 ? 'up' : 'dn';
   const reason = (s.reasons || []).slice(0, 2).join(' · ');
-  return `<div class="stock-card" onclick="selectScreenStock('${s.symbol}')">
+  return `<div class="stock-card" onclick="openScreenDetail('entry','${s.symbol}')">
     <div class="risk-dot ${s.risk || 'medium'}"></div>
     <div class="card-sym">${escHtml(s.symbol)}</div>
     <div class="card-name">${escHtml(s.name || s.symbol)}</div>
@@ -364,7 +368,7 @@ function buildEntryCard(s) {
 function buildAddCard(s) {
   const highGap = s.high_63 && s.current ? (s.high_63 - s.current) / s.high_63 * 100 : 0;
   const reason  = (s.reasons || []).slice(0, 2).join(' · ');
-  return `<div class="stock-card" onclick="selectScreenStock('${s.symbol}')">
+  return `<div class="stock-card" onclick="openScreenDetail('add','${s.symbol}')">
     <div class="risk-dot medium"></div>
     <div class="card-sym">${escHtml(s.symbol)}</div>
     <div class="card-name">${escHtml(s.name || s.symbol)}</div>
@@ -382,7 +386,7 @@ function buildAddCard(s) {
 function buildExitCard(s) {
   const sign = s.change_pct >= 0 ? '+' : '';
   const warn = (s.warnings || []).slice(0, 2).join(' · ');
-  return `<div class="stock-card card-exit" onclick="selectScreenStock('${s.symbol}')">
+  return `<div class="stock-card card-exit" onclick="openScreenDetail('exit','${s.symbol}')">
     <div class="risk-dot high"></div>
     <div class="card-sym">${escHtml(s.symbol)}</div>
     <div class="card-name">${escHtml(s.name || s.symbol)}</div>
@@ -399,7 +403,7 @@ function buildExitCard(s) {
 
 function buildPECard(s) {
   const reason = (s.reasons || [])[0] || '';
-  return `<div class="stock-card" onclick="selectScreenStock('${s.symbol}')">
+  return `<div class="stock-card" onclick="openScreenDetail('pe','${s.symbol}')">
     <div class="risk-dot low"></div>
     <div class="card-sym">${escHtml(s.symbol)}</div>
     <div class="card-name">${escHtml(s.name || s.symbol)}</div>
@@ -414,15 +418,103 @@ function buildPECard(s) {
   </div>`;
 }
 
-function selectScreenStock(symbol) {
+function openScreenDetail(type, symbol) {
+  // Load K-line in background; on mobile open modal first, kline loads when user taps "查看K線"
   _currentSymbol = symbol;
   document.querySelectorAll('.stock-card').forEach(c => c.classList.remove('active'));
   document.querySelectorAll(`.stock-card[onclick*="'${symbol}'"]`).forEach(c => c.classList.add('active'));
-  if (window.innerWidth < 1024) {
-    showPage('chart', document.querySelector('.bnav-btn[data-page="chart"]'));
-  } else {
-    loadKline(symbol, _currentPeriod);
+  if (window.innerWidth >= 1024) loadKline(symbol, _currentPeriod);
+
+  const keyMap = { entry: 'entry_timing', add: 'add_position', exit: 'exit_warning', pe: 'pe_value' };
+  const stocks = _screenData?.[keyMap[type]] || [];
+  const s = stocks.find(r => r.symbol === symbol);
+  if (!s) return;
+
+  // Header
+  document.getElementById('dtSym').textContent  = s.symbol;
+  document.getElementById('dtName').textContent = s.name || s.symbol;
+  const themeEl = document.getElementById('dtTheme');
+  themeEl.textContent = s.theme || '';
+  themeEl.style.display = s.theme ? 'inline-block' : 'none';
+  document.getElementById('dtPrice').textContent = s.current?.toFixed(2) ?? '--';
+  document.getElementById('dtScore').textContent = s.score ?? '--';
+
+  // Risk
+  const riskMap = { low: ['低風險', 'low-risk'], medium: ['中風險', 'med-risk'], high: ['高風險', 'high-risk'] };
+  const [rLabel, rCls] = riskMap[s.risk] || ['中風險', 'med-risk'];
+  const rEl = document.getElementById('dtRisk');
+  rEl.textContent = rLabel;
+  rEl.className   = `ps-val ${rCls}`;
+
+  // Type-specific metric row (replaces "回撤")
+  const pbLbl = document.getElementById('dtPullbackLabel');
+  const pbVal = document.getElementById('dtPullback');
+  if (type === 'entry') {
+    pbLbl.textContent = '今日漲跌';
+    const sign = (s.change_pct ?? 0) >= 0 ? '+' : '';
+    pbVal.textContent = `${sign}${s.change_pct?.toFixed(2) ?? '--'}%`;
+    pbVal.className   = `ps-val ${(s.change_pct ?? 0) >= 0 ? 'up' : 'dn'}`;
+  } else if (type === 'add') {
+    const gap = s.high_63 && s.current ? (s.high_63 - s.current) / s.high_63 * 100 : 0;
+    pbLbl.textContent = s.at_new_high ? '突破新高' : '距高點';
+    pbVal.textContent = s.at_new_high ? '創波段新高 🚀' : `-${gap.toFixed(1)}%`;
+    pbVal.className   = `ps-val ${s.at_new_high ? 'up' : 'dn'}`;
+  } else if (type === 'exit') {
+    pbLbl.textContent = '今日跌幅';
+    const sign = (s.change_pct ?? 0) >= 0 ? '+' : '';
+    pbVal.textContent = `${sign}${s.change_pct?.toFixed(2) ?? '--'}%`;
+    pbVal.className   = 'ps-val dn';
+  } else if (type === 'pe') {
+    pbLbl.textContent = '本益比';
+    pbVal.textContent = `${s.pe?.toFixed(1) ?? '--'} 倍`;
+    pbVal.className   = 'ps-val gold';
   }
+
+  // Reasons / Warnings
+  const items = type === 'exit' ? (s.warnings || []) : (s.reasons || []);
+  document.getElementById('dtReasons').innerHTML = items.length
+    ? items.map(r => `<li>${escHtml(r)}</li>`).join('')
+    : '<li>等待更多技術確認訊號</li>';
+
+  // Indicators — type-specific
+  let indHtml = '';
+  if (type === 'entry') {
+    const volCls = s.vol_ratio >= 1.5 ? 'up' : 'accent';
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">回測均線</div><div class="ind-val accent">${escHtml(s.ma_label || '--')}</div></div>
+      <div class="ind-item"><div class="ind-label">量能比 (30日均)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
+      <div class="ind-item"><div class="ind-label">今日漲跌</div><div class="ind-val ${(s.change_pct ?? 0) >= 0 ? 'up' : 'dn'}">${(s.change_pct ?? 0) >= 0 ? '+' : ''}${s.change_pct?.toFixed(2) ?? '--'}%</div></div>
+      <div class="ind-item"><div class="ind-label">現價</div><div class="ind-val">${s.current?.toFixed(2) ?? '--'}</div></div>`;
+  } else if (type === 'add') {
+    const volCls = s.vol_ratio >= 2.0 ? 'up' : 'accent';
+    const gap    = s.high_63 && s.current ? (s.high_63 - s.current) / s.high_63 * 100 : 0;
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">量能比 (30日均)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
+      <div class="ind-item"><div class="ind-label">63日高點</div><div class="ind-val">${s.high_63?.toFixed(2) ?? '--'}</div></div>
+      <div class="ind-item"><div class="ind-label">距波段高點</div><div class="ind-val ${s.at_new_high ? 'up' : 'dn'}">${s.at_new_high ? '已突破' : `-${gap.toFixed(1)}%`}</div></div>
+      <div class="ind-item"><div class="ind-label">現價</div><div class="ind-val">${s.current?.toFixed(2) ?? '--'}</div></div>`;
+  } else if (type === 'exit') {
+    const rsiCls = s.rsi >= 72 ? 'up' : s.rsi >= 60 ? 'gold' : '';
+    const volCls = s.vol_ratio >= 1.5 ? 'up' : '';
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">RSI (14)</div><div class="ind-val ${rsiCls}">${s.rsi?.toFixed(1) ?? '--'} · ${(s.rsi ?? 0) >= 72 ? '超買警示' : '偏高'}</div></div>
+      <div class="ind-item"><div class="ind-label">量能比 (30日均)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
+      <div class="ind-item"><div class="ind-label">今日漲跌</div><div class="ind-val dn">${(s.change_pct ?? 0) >= 0 ? '+' : ''}${s.change_pct?.toFixed(2) ?? '--'}%</div></div>
+      <div class="ind-item"><div class="ind-label">現價</div><div class="ind-val">${s.current?.toFixed(2) ?? '--'}</div></div>`;
+  } else if (type === 'pe') {
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">本益比 (PE)</div><div class="ind-val gold">${s.pe?.toFixed(1) ?? '--'} 倍</div></div>
+      <div class="ind-item"><div class="ind-label">EPS</div><div class="ind-val accent">${s.eps?.toFixed(2) ?? '--'}</div></div>
+      <div class="ind-item"><div class="ind-label">現價</div><div class="ind-val">${s.current?.toFixed(2) ?? '--'}</div></div>
+      <div class="ind-item"><div class="ind-label">估值評級</div><div class="ind-val up">合理估值區間</div></div>`;
+  }
+  document.getElementById('dtIndicators').innerHTML = indHtml;
+
+  // Hide strategies section (pullback-only concept)
+  document.getElementById('dtStratSection').style.display = 'none';
+
+  document.getElementById('detailOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
 }
 
 // ── Utils ─────────────────────────────────────────────────

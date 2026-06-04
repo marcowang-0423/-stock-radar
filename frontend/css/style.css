@@ -211,6 +211,51 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .sk-row.sm { width: 55%; height: 10px; }
 @keyframes pulse { 0%,100%{opacity:.4} 50%{opacity:.9} }
 
+/* ── Screen Tabs ─────────────────────────────────────── */
+.screen-tabs {
+  display: flex; gap: 3px; flex-wrap: wrap; margin: 6px 0 4px;
+}
+.screen-tab {
+  padding: 4px 11px;
+  border-radius: 5px;
+  font-size: 11px; font-weight: 600;
+  color: var(--txt2);
+  border: 1px solid var(--border2);
+  background: transparent;
+  transition: all .12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.screen-tab:hover { background: var(--bg3); }
+.screen-tab.on { background: var(--accent2); color: #fff; border-color: var(--accent2); }
+
+/* ── Card Variants ───────────────────────────────────── */
+/* Generic metric row (replaces card-pullback for other screens) */
+.card-metric {
+  display: inline-flex; align-items: center;
+  margin-top: 5px; font-size: 11px; font-weight: 600;
+  padding: 3px 7px; border-radius: 5px; width: fit-content;
+}
+.card-metric.up { color: var(--up); background: var(--up-bg); }
+.card-metric.dn { color: var(--dn); background: var(--dn-bg); }
+
+/* PE ratio badge */
+.pe-badge {
+  margin-top: 7px; font-size: 13px; font-weight: 700;
+  color: var(--gold);
+  background: rgba(210,153,34,.12);
+  border: 1px solid rgba(210,153,34,.25);
+  padding: 4px 9px; border-radius: 6px; width: fit-content;
+  font-variant-numeric: tabular-nums;
+}
+
+/* Exit warning card — red accent */
+.card-exit { border-color: rgba(248,81,73,.25); }
+.card-exit::before {
+  background: linear-gradient(90deg, #f85149, #ff8c69);
+  opacity: 1;
+}
+.exit-warn { color: var(--up) !important; }
+
 /* ── Section Header ─────────────────────────────────── */
 .sec-head {
   padding: 12px 14px 8px;

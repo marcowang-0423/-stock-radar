@@ -60,13 +60,20 @@
     <section class="rec-section" id="pageRecs" data-page="recs">
       <div class="sec-head">
         <div class="sec-title-row">
-          <h2 class="sec-title">今日飆股回檔精選</h2>
+          <h2 class="sec-title" id="screenTitle">今日飆股回檔精選</h2>
           <span class="date-badge" id="recDate">--</span>
         </div>
-        <div class="sec-notice">⚠ 飆漲後回檔整理・守均線・逢低布局・非追高</div>
+        <div class="screen-tabs">
+          <button class="screen-tab on" onclick="switchScreen('pullback',this)">回檔股</button>
+          <button class="screen-tab" onclick="switchScreen('entry',this)">進場時機</button>
+          <button class="screen-tab" onclick="switchScreen('add',this)">加碼訊號</button>
+          <button class="screen-tab" onclick="switchScreen('exit',this)">出場警示</button>
+          <button class="screen-tab" onclick="switchScreen('pe',this)">本益比</button>
+        </div>
+        <div class="sec-notice" id="screenNotice">⚠ 飆漲後回檔整理・守均線・逢低布局・非追高</div>
       </div>
-      <!-- Strategy legend -->
-      <div class="strategy-legend">
+      <!-- Strategy legend (pullback tab only) -->
+      <div class="strategy-legend" id="stratLegend">
         <span class="strat-tag vol">📉 縮量回檔</span>
         <span class="strat-tag inst">🏦 法人買超</span>
         <span class="strat-tag theme">🔬 題材概念</span>

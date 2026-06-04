@@ -86,6 +86,29 @@ async def get_recommendations():
     return {"data": data, "cached": False, "generated_at": _cache_ts["recs"]}
 
 
+@app.get("/api/screens")
+async def get_screens():
+    from analyzer import screen_entry_timing, screen_add_position, screen_exit_warnings, screen_pe_value
+    key = "screens"
+    if not _stale(key, 3600):
+        return _cache[key]
+    entry, add, exit_, pe = await asyncio.gather(
+        _run(screen_entry_timing),
+        _run(screen_add_position),
+        _run(screen_exit_warnings),
+        _run(screen_pe_value),
+    )
+    data = {
+        'entry_timing': entry,
+        'add_position': add,
+        'exit_warning': exit_,
+        'pe_value':     pe,
+    }
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
 @app.get("/api/stock/{symbol}/kline")
 async def get_kline(symbol: str, period: str = Query("3mo")):
     from data_fetcher import fetch_stock_kline

@@ -19,6 +19,8 @@ async function init() {
     _initMobileDefault();
   }
 
+  loadScreens(); // fire in background — don't await
+
   await Promise.all([
     loadIndices(),
     loadNews(),
@@ -277,6 +279,150 @@ async function changePeriod(period, btn) {
   document.querySelectorAll('.period-btn').forEach(b => b.classList.remove('on'));
   btn?.classList.add('on');
   if (_currentSymbol) await loadKline(_currentSymbol, _currentPeriod);
+}
+
+// ── Screen Tabs ───────────────────────────────────────────
+let _screenData     = null;
+let _activeScreen   = 'pullback';
+let _screensLoading = false;
+
+const SCREEN_CONFIG = {
+  pullback: { title: '今日飆股回檔精選',       notice: '⚠ 飆漲後回檔整理・守均線・逢低布局・非追高', showLegend: true  },
+  entry:    { title: '進場時機',               notice: '✅ 回檔均線・價格轉強・成交量放大',           showLegend: false },
+  add:      { title: '加碼訊號',               notice: '🚀 帶量紅K棒・波段創新高',                   showLegend: false },
+  exit:     { title: '出場警示',               notice: '⛔ 帶量黑K・跌破均線・利多出盡',             showLegend: false },
+  pe:       { title: '本益比合理（10–15倍）', notice: '💰 合理估值・安全邊際・市價÷EPS',            showLegend: false },
+};
+
+async function loadScreens() {
+  if (_screensLoading) return;
+  _screensLoading = true;
+  try {
+    const res  = await fetch(`${BASE}/api/screens`);
+    _screenData = await res.json();
+    if (_activeScreen !== 'pullback') renderScreen(_activeScreen);
+  } catch (e) {
+    console.error('screens load error', e);
+  } finally {
+    _screensLoading = false;
+  }
+}
+
+function switchScreen(type, btn) {
+  _activeScreen = type;
+  document.querySelectorAll('.screen-tab').forEach(b => b.classList.remove('on'));
+  btn?.classList.add('on');
+
+  const cfg = SCREEN_CONFIG[type];
+  document.getElementById('screenTitle').textContent = cfg.title;
+  document.getElementById('screenNotice').textContent = cfg.notice;
+  const legend = document.getElementById('stratLegend');
+  if (legend) legend.style.display = cfg.showLegend ? '' : 'none';
+
+  renderScreen(type);
+}
+
+function renderScreen(type) {
+  const el = document.getElementById('recCards');
+  if (type === 'pullback') { renderRecCards(_recData); return; }
+
+  if (!_screenData) {
+    el.innerHTML = '<div class="rec-loading"><div class="spinner"></div><p>載入分析中…<br><small>首次約需 1–2 分鐘</small></p></div>';
+    if (!_screensLoading) loadScreens();
+    return;
+  }
+
+  const keyMap = { entry: 'entry_timing', add: 'add_position', exit: 'exit_warning', pe: 'pe_value' };
+  const stocks = _screenData[keyMap[type]] || [];
+  if (!stocks.length) {
+    el.innerHTML = '<div class="empty-state"><span>今日無符合條件的股票</span><small>市場條件未達篩選標準</small></div>';
+    return;
+  }
+  const builders = { entry: buildEntryCard, add: buildAddCard, exit: buildExitCard, pe: buildPECard };
+  el.innerHTML = stocks.map(s => builders[type](s)).join('');
+}
+
+function buildEntryCard(s) {
+  const sign = s.change_pct >= 0 ? '+' : '';
+  const cls  = s.change_pct >= 0 ? 'up' : 'dn';
+  const reason = (s.reasons || []).slice(0, 2).join(' · ');
+  return `<div class="stock-card" onclick="selectScreenStock('${s.symbol}')">
+    <div class="risk-dot ${s.risk || 'medium'}"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    ${s.theme ? `<span class="card-theme">${escHtml(s.theme)}</span>` : ''}
+    <div class="card-price">${s.current?.toFixed(2) ?? '--'}</div>
+    <div class="card-metric ${cls}">${sign}${s.change_pct?.toFixed(2) ?? '--'}%</div>
+    <div class="card-tags">
+      <span class="tag blue">📏 ${escHtml(s.ma_label || '均線')}</span>
+      <span class="tag ${s.vol_ratio >= 1.5 ? 'bull' : 'blue'}">量 ${s.vol_ratio?.toFixed(1) ?? '--'}x</span>
+    </div>
+    <div class="card-reason">${escHtml(reason)}</div>
+  </div>`;
+}
+
+function buildAddCard(s) {
+  const highGap = s.high_63 && s.current ? (s.high_63 - s.current) / s.high_63 * 100 : 0;
+  const reason  = (s.reasons || []).slice(0, 2).join(' · ');
+  return `<div class="stock-card" onclick="selectScreenStock('${s.symbol}')">
+    <div class="risk-dot medium"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    ${s.theme ? `<span class="card-theme">${escHtml(s.theme)}</span>` : ''}
+    <div class="card-price">${s.current?.toFixed(2) ?? '--'}</div>
+    <div class="card-metric up">${s.at_new_high ? '波段新高' : `距高點 ${highGap.toFixed(1)}%`}</div>
+    <div class="card-tags">
+      <span class="tag bull">量 ${s.vol_ratio?.toFixed(1) ?? '--'}x</span>
+      ${s.at_new_high ? '<span class="tag green">🚀 創新高</span>' : ''}
+    </div>
+    <div class="card-reason">${escHtml(reason)}</div>
+  </div>`;
+}
+
+function buildExitCard(s) {
+  const sign = s.change_pct >= 0 ? '+' : '';
+  const warn = (s.warnings || []).slice(0, 2).join(' · ');
+  return `<div class="stock-card card-exit" onclick="selectScreenStock('${s.symbol}')">
+    <div class="risk-dot high"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    ${s.theme ? `<span class="card-theme">${escHtml(s.theme)}</span>` : ''}
+    <div class="card-price">${s.current?.toFixed(2) ?? '--'}</div>
+    <div class="card-metric dn">${sign}${s.change_pct?.toFixed(2) ?? '--'}%</div>
+    <div class="card-tags">
+      <span class="tag bear">RSI ${s.rsi?.toFixed(0) ?? '--'}</span>
+      <span class="tag bear">量 ${s.vol_ratio?.toFixed(1) ?? '--'}x</span>
+    </div>
+    <div class="card-reason exit-warn">${escHtml(warn)}</div>
+  </div>`;
+}
+
+function buildPECard(s) {
+  const reason = (s.reasons || [])[0] || '';
+  return `<div class="stock-card" onclick="selectScreenStock('${s.symbol}')">
+    <div class="risk-dot low"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    ${s.theme ? `<span class="card-theme">${escHtml(s.theme)}</span>` : ''}
+    <div class="card-price">${s.current?.toFixed(2) ?? '--'}</div>
+    <div class="pe-badge">本益比 ${s.pe?.toFixed(1) ?? '--'} 倍</div>
+    <div class="card-tags">
+      ${s.eps != null ? `<span class="tag blue">EPS ${s.eps?.toFixed(2)}</span>` : ''}
+      <span class="tag green">估值合理</span>
+    </div>
+    <div class="card-reason">${escHtml(reason)}</div>
+  </div>`;
+}
+
+function selectScreenStock(symbol) {
+  _currentSymbol = symbol;
+  document.querySelectorAll('.stock-card').forEach(c => c.classList.remove('active'));
+  document.querySelectorAll(`.stock-card[onclick*="'${symbol}'"]`).forEach(c => c.classList.add('active'));
+  if (window.innerWidth < 1024) {
+    showPage('chart', document.querySelector('.bnav-btn[data-page="chart"]'));
+  } else {
+    loadKline(symbol, _currentPeriod);
+  }
 }
 
 // ── Utils ─────────────────────────────────────────────────

@@ -142,6 +142,15 @@ def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:
             prev = float(closes[-2]) if len(closes) >= 2 else current
             change_pct = (current - prev) / prev * 100 if prev else 0
 
+            # ATR14
+            highs  = hist['High'].values
+            lows_  = hist['Low'].values
+            trs    = [max(highs[i] - lows_[i],
+                          abs(highs[i] - closes[i-1]),
+                          abs(lows_[i]  - closes[i-1]))
+                      for i in range(1, len(closes))]
+            atr14  = float(pd.Series(trs).rolling(14).mean().iloc[-1]) if len(trs) >= 14 else None
+
             # MA lines for overlay
             sma20 = hist['Close'].rolling(20).mean().dropna()
             sma60 = hist['Close'].rolling(60).mean().dropna()
@@ -169,6 +178,7 @@ def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:
                 'candles': candles,
                 'ma20': ma20_line,
                 'ma60': ma60_line,
+                'atr14': round(atr14, 2) if atr14 else None,
                 'current': round(current, 2),
                 'change_pct': round(change_pct, 2),
                 'high_period': round(float(hist['High'].max()), 2),
@@ -558,3 +568,252 @@ def fetch_market_indices() -> list:
             print(f"Index error {sym}: {e}")
 
     return result
+
+
+# ── Sector grouping for 產業族群熱度 ─────────────────────────────
+_SECTOR_MAP = {
+    'AI 伺服器': ['2382', '6669', '3231', '2317', '2376'],
+    '半導體':    ['2330', '2303', '2454', '3034', '3711'],
+    '晶圓材料':  ['5483', '6488', '2344', '3596'],
+    '網通/PCB': ['2379', '2345', '3037'],
+    '工業/電源': ['2308', '1590', '2395', '4938'],
+    '重電/傳產': ['1519', '6505', '1303', '2207'],
+    '光學/其他': ['3008'],
+}
+
+
+def fetch_sector_heat() -> list:
+    """Aggregate latest institutional net buys by sector for tracked stocks."""
+    from analyzer import STOCK_NAMES
+    start_date = (datetime.now() - timedelta(days=10)).strftime('%Y-%m-%d')
+
+    def _fetch_one(symbol):
+        try:
+            url = (
+                'https://api.finmindtrade.com/api/v4/data'
+                '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+                f'&data_id={symbol}&start_date={start_date}&token='
+            )
+            resp = requests.get(url, timeout=12, headers=HEADERS)
+            body = resp.json()
+            if body.get('status') != 200 or not body.get('data'):
+                return None
+            records     = body['data']
+            latest_date = max(r['date'] for r in records)
+            day_recs    = [r for r in records if r['date'] == latest_date]
+            foreign_net = trust_net = dealer_net = 0
+            for r in day_recs:
+                net = r['buy'] - r['sell']
+                nm  = r['name']
+                if nm in ('Foreign_Investor', 'Foreign_Dealer_Self'):
+                    foreign_net += net
+                elif nm == 'Investment_Trust':
+                    trust_net += net
+                elif nm in ('Dealer_self', 'Dealer_Hedging'):
+                    dealer_net += net
+            return {
+                'symbol':    symbol,
+                'name':      STOCK_NAMES.get(symbol, symbol),
+                'total_net': foreign_net + trust_net + dealer_net,
+                'date':      latest_date,
+            }
+        except Exception as e:
+            print(f'sector_heat {symbol}: {e}')
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_fetch_one, sym): sym for sym in _INST_SYMBOLS}
+        done, _ = concurrent.futures.wait(futs, timeout=45)
+        stock_data = {}
+        for f in done:
+            try:
+                r = f.result(timeout=1)
+                if r:
+                    stock_data[r['symbol']] = r
+            except Exception:
+                pass
+
+    results = []
+    for sector, symbols in _SECTOR_MAP.items():
+        rows = [stock_data[sym] for sym in symbols if sym in stock_data]
+        if not rows:
+            continue
+        total_net = sum(r['total_net'] for r in rows)
+        buy_count = sum(1 for r in rows if r['total_net'] > 0)
+        rows.sort(key=lambda x: x['total_net'], reverse=True)
+        score = buy_count / len(rows) * 100 if rows else 0
+        results.append({
+            'sector':      sector,
+            'total_net':   total_net,
+            'buy_count':   buy_count,
+            'stock_count': len(rows),
+            'stocks':      rows,
+            'score':       round(score),
+        })
+
+    results.sort(
+        key=lambda x: x['score'] * 0.6 + (x['total_net'] / 1_000_000) * 0.4,
+        reverse=True,
+    )
+    return results
+
+
+def fetch_stock_backtest(symbol: str) -> dict:
+    """Simple backtest: RSI pullback pattern → 20-day forward return (1-year window)."""
+    for suffix in ['.TW', '.TWO']:
+        try:
+            hist = yf.Ticker(f"{symbol}{suffix}").history(period="1y", interval="1d", auto_adjust=True)
+            if hist.empty or len(hist) < 60:
+                continue
+
+            closes    = hist['Close'].values
+            delta     = pd.Series(closes).diff()
+            gain      = delta.clip(lower=0).rolling(14).mean()
+            loss      = (-delta.clip(upper=0)).rolling(14).mean()
+            rsi       = (100 - 100 / (1 + gain / loss.replace(0, float('inf')))).values
+            roll_high = pd.Series(closes).rolling(20).max().values
+
+            occurrences = wins = 0
+            gains_list  = []
+            for i in range(20, len(closes) - 20):
+                r, c, rh = rsi[i], closes[i], roll_high[i]
+                if not (30 <= r <= 52):
+                    continue
+                if rh <= 0 or (rh - c) / rh < 0.08:
+                    continue
+                fwd = (closes[i + 20] - c) / c * 100
+                gains_list.append(fwd)
+                occurrences += 1
+                if fwd >= 5:
+                    wins += 1
+
+            if not occurrences:
+                return {'symbol': symbol, 'occurrences': 0, 'win_rate': 0, 'avg_gain': 0, 'max_gain': 0, 'period': '近1年'}
+
+            return {
+                'symbol':      symbol,
+                'occurrences': occurrences,
+                'win_rate':    round(wins / occurrences * 100),
+                'avg_gain':    round(sum(gains_list) / len(gains_list), 1),
+                'max_gain':    round(max(gains_list), 1),
+                'period':      '近1年',
+            }
+        except Exception as e:
+            print(f'backtest {symbol}{suffix}: {e}')
+            continue
+    return {'error': '無法取得回測資料'}
+
+
+def fetch_reserve_stocks() -> list:
+    """Pre-breakout watchlist: institutions just started buying, KD cross, not at 52-week high."""
+    from analyzer import STOCK_NAMES
+    start_date = (datetime.now() - timedelta(days=35)).strftime('%Y-%m-%d')
+
+    def _fetch_one(symbol):
+        try:
+            url = (
+                'https://api.finmindtrade.com/api/v4/data'
+                '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+                f'&data_id={symbol}&start_date={start_date}&token='
+            )
+            resp = requests.get(url, timeout=12, headers=HEADERS)
+            body = resp.json()
+            if body.get('status') != 200 or not body.get('data'):
+                return None
+
+            from collections import defaultdict
+            by_date: dict = defaultdict(lambda: {'foreign': 0, 'trust': 0})
+            for r in body['data']:
+                net = r['buy'] - r['sell']
+                nm  = r['name']
+                if nm in ('Foreign_Investor', 'Foreign_Dealer_Self'):
+                    by_date[r['date']]['foreign'] += net
+                elif nm == 'Investment_Trust':
+                    by_date[r['date']]['trust'] += net
+
+            dates = sorted(by_date.keys(), reverse=True)
+            if not dates:
+                return None
+
+            def streak(key):
+                if by_date[dates[0]][key] <= 0:
+                    return 0
+                cnt = 0
+                for d in dates:
+                    if by_date[d][key] > 0:
+                        cnt += 1
+                    else:
+                        break
+                return cnt
+
+            f_streak = streak('foreign')
+            t_streak = streak('trust')
+            if f_streak < 1 and t_streak < 1:
+                return None
+
+            # Get K-line for KD computation
+            kline = None
+            for suffix in ['.TW', '.TWO']:
+                try:
+                    h = yf.Ticker(f"{symbol}{suffix}").history(period="6mo", interval="1d", auto_adjust=True)
+                    if not h.empty and len(h) >= 14:
+                        kline = h
+                        break
+                except Exception:
+                    continue
+            if kline is None:
+                return None
+
+            c_arr = kline['Close'].values
+            h_arr = kline['High'].values
+            l_arr = kline['Low'].values
+            current   = float(c_arr[-1])
+            high_year = float(max(h_arr))
+
+            if current >= high_year * 0.96:
+                return None  # Already near the high — not a "reserve" stock
+
+            # KD Stochastic (9-period, EMA smoothed)
+            period = 9
+            k_raw = []
+            for i in range(period - 1, len(c_arr)):
+                lo_p = min(l_arr[max(0, i - period + 1): i + 1])
+                hi_p = max(h_arr[max(0, i - period + 1): i + 1])
+                k_raw.append((c_arr[i] - lo_p) / (hi_p - lo_p) * 100 if hi_p != lo_p else 50)
+
+            k_sm = pd.Series(k_raw).ewm(span=3).mean().values
+            d_sm = pd.Series(k_sm).ewm(span=3).mean().values
+            kd_cross = any(
+                k_sm[i] > d_sm[i] and k_sm[i - 1] <= d_sm[i - 1]
+                for i in range(max(1, len(k_sm) - 5), len(k_sm))
+            )
+
+            return {
+                'symbol':    symbol,
+                'name':      STOCK_NAMES.get(symbol, symbol),
+                'current':   round(current, 2),
+                'f_streak':  f_streak,
+                't_streak':  t_streak,
+                'kd_cross':  kd_cross,
+                'high_gap':  round((high_year - current) / high_year * 100, 1),
+                'high_year': round(high_year, 2),
+                'score':     f_streak * 2 + t_streak * 1.5 + (10 if kd_cross else 0),
+            }
+        except Exception as e:
+            print(f'reserve {symbol}: {e}')
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=4) as pool:
+        futs = {pool.submit(_fetch_one, sym): sym for sym in _INST_SYMBOLS}
+        done, _ = concurrent.futures.wait(futs, timeout=120)
+        rows = []
+        for f in done:
+            try:
+                r = f.result(timeout=1)
+                if r:
+                    rows.append(r)
+            except Exception:
+                pass
+
+    rows.sort(key=lambda x: x['score'], reverse=True)
+    return rows[:15]

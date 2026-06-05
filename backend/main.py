@@ -145,6 +145,42 @@ async def get_contracts():
     return {"data": data}
 
 
+@app.get("/api/sector/heat")
+async def get_sector_heat():
+    from data_fetcher import fetch_sector_heat
+    key = "sector_heat"
+    if not _stale(key, 3600):
+        return {"data": _cache[key]}
+    data = await _run(fetch_sector_heat)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return {"data": data}
+
+
+@app.get("/api/stock/{symbol}/backtest")
+async def get_backtest(symbol: str):
+    from data_fetcher import fetch_stock_backtest
+    key = f"backtest_{symbol}"
+    if not _stale(key, 86400):
+        return _cache[key]
+    data = await _run(fetch_stock_backtest, symbol)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
+@app.get("/api/radar/reserve")
+async def get_reserve():
+    from data_fetcher import fetch_reserve_stocks
+    key = "reserve"
+    if not _stale(key, 3600):
+        return {"data": _cache[key]}
+    data = await _run(fetch_reserve_stocks)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return {"data": data}
+
+
 @app.get("/api/stock/{symbol}/holders")
 async def get_holders(symbol: str):
     from data_fetcher import fetch_big_holders

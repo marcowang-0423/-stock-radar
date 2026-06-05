@@ -76,6 +76,8 @@
           <button class="screen-tab" onclick="switchScreen('inst_radar',this)">法人雷達</button>
           <button class="screen-tab" onclick="switchScreen('revenue',this)">營收雷達</button>
           <button class="screen-tab" onclick="switchScreen('contracts',this)">合約負債</button>
+          <button class="screen-tab" onclick="switchScreen('sector_heat',this)">族群熱度</button>
+          <button class="screen-tab" onclick="switchScreen('reserve',this)">預備軍</button>
         </div>
         <div class="sec-notice" id="screenNotice">⚠ 飆漲後回檔整理・守均線・逢低布局・非追高</div>
       </div>
@@ -227,9 +229,19 @@
       <div id="dtAIBars"></div>
     </div>
 
+    <div class="detail-section" id="dtStopSection" style="display:none">
+      <div class="detail-sec-title">🎯 停損停利建議</div>
+      <div id="dtStop"></div>
+    </div>
+
     <div class="detail-section" id="dtFinancialSection" style="display:none">
       <div class="detail-sec-title">💹 財報數字</div>
       <div class="detail-indicators" id="dtFinancials"></div>
+    </div>
+
+    <div class="detail-section" id="dtBacktestSection" style="display:none">
+      <div class="detail-sec-title">📊 歷史回測</div>
+      <div id="dtBacktest"></div>
     </div>
 
     <div class="detail-section" id="dtHoldersSection" style="display:none">

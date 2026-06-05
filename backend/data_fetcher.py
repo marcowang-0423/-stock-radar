@@ -247,6 +247,286 @@ def fetch_stock_financials(symbol: str) -> dict:
     return {'error': '無法取得財報資料'}
 
 
+def fetch_institutional_radar() -> list:
+    """Consecutive buy/sell streaks + cumulative net for tracked stocks (30-day lookback)."""
+    from analyzer import STOCK_NAMES
+    start_date = (datetime.now() - timedelta(days=35)).strftime('%Y-%m-%d')
+
+    def _fetch_one(symbol):
+        try:
+            url = (
+                'https://api.finmindtrade.com/api/v4/data'
+                '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+                f'&data_id={symbol}&start_date={start_date}&token='
+            )
+            resp = requests.get(url, timeout=12, headers=HEADERS)
+            body = resp.json()
+            if body.get('status') != 200 or not body.get('data'):
+                return None
+
+            from collections import defaultdict
+            by_date = defaultdict(lambda: {'foreign': 0, 'trust': 0, 'dealer': 0})
+            for r in body['data']:
+                net = r['buy'] - r['sell']
+                nm  = r['name']
+                if nm in ('Foreign_Investor', 'Foreign_Dealer_Self'):
+                    by_date[r['date']]['foreign'] += net
+                elif nm == 'Investment_Trust':
+                    by_date[r['date']]['trust'] += net
+                elif nm in ('Dealer_self', 'Dealer_Hedging'):
+                    by_date[r['date']]['dealer'] += net
+
+            dates = sorted(by_date.keys(), reverse=True)
+            if not dates:
+                return None
+
+            def streak(key):
+                first = by_date[dates[0]][key]
+                if first == 0:
+                    return 0
+                is_buy = first > 0
+                cnt = 0
+                for d in dates:
+                    v = by_date[d][key]
+                    if (is_buy and v > 0) or (not is_buy and v < 0):
+                        cnt += 1
+                    else:
+                        break
+                return cnt if is_buy else -cnt
+
+            latest   = by_date[dates[0]]
+            recent10 = dates[:10]
+            return {
+                'symbol':         symbol,
+                'name':           STOCK_NAMES.get(symbol, symbol),
+                'date':           dates[0],
+                'foreign_net':    latest['foreign'],
+                'trust_net':      latest['trust'],
+                'dealer_net':     latest['dealer'],
+                'total_net':      latest['foreign'] + latest['trust'] + latest['dealer'],
+                'foreign_streak': streak('foreign'),
+                'trust_streak':   streak('trust'),
+                'dealer_streak':  streak('dealer'),
+                'foreign_cum10':  sum(by_date[d]['foreign'] for d in recent10),
+                'trust_cum10':    sum(by_date[d]['trust']   for d in recent10),
+            }
+        except Exception as e:
+            print(f'inst_radar {symbol}: {e}')
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_fetch_one, sym): sym for sym in _INST_SYMBOLS}
+        done, _ = concurrent.futures.wait(futs, timeout=60)
+        rows = []
+        for f in done:
+            try:
+                r = f.result(timeout=1)
+                if r:
+                    rows.append(r)
+            except Exception:
+                pass
+
+    rows.sort(key=lambda x: max(x['foreign_streak'], x['trust_streak'], 0), reverse=True)
+    return rows
+
+
+def fetch_revenue_radar() -> list:
+    """Monthly revenue MoM/YoY growth for tracked stocks."""
+    from analyzer import STOCK_NAMES
+    start_date = (datetime.now() - timedelta(days=400)).strftime('%Y-%m-%d')
+
+    def _fetch_one(symbol):
+        try:
+            url = (
+                'https://api.finmindtrade.com/api/v4/data'
+                '?dataset=TaiwanStockMonthRevenue'
+                f'&data_id={symbol}&start_date={start_date}&token='
+            )
+            resp = requests.get(url, timeout=12, headers=HEADERS)
+            body = resp.json()
+            if body.get('status') != 200 or not body.get('data'):
+                return None
+
+            data = sorted(body['data'],
+                          key=lambda x: (int(x['revenue_year']), int(x['revenue_month'])),
+                          reverse=True)
+            if len(data) < 2:
+                return None
+
+            cur, prev = data[0], data[1]
+            rev_cur   = float(cur['revenue'])
+            rev_prev  = float(prev['revenue'])
+            mom = (rev_cur - rev_prev) / rev_prev * 100 if rev_prev else 0
+
+            yoy_rec = next(
+                (r for r in data[1:]
+                 if int(r['revenue_month']) == int(cur['revenue_month'])
+                 and int(r['revenue_year'])  == int(cur['revenue_year']) - 1),
+                None)
+            yoy = None
+            if yoy_rec:
+                rev_ly = float(yoy_rec['revenue'])
+                yoy = (rev_cur - rev_ly) / rev_ly * 100 if rev_ly else None
+
+            yoy_3m_vals = []
+            for r in data[:3]:
+                ly = next((x for x in data
+                           if int(x['revenue_month']) == int(r['revenue_month'])
+                           and int(x['revenue_year'])  == int(r['revenue_year']) - 1), None)
+                if ly and float(ly['revenue']) > 0:
+                    yoy_3m_vals.append((float(r['revenue']) - float(ly['revenue'])) / float(ly['revenue']) * 100)
+            yoy_3m = round(sum(yoy_3m_vals) / len(yoy_3m_vals), 1) if yoy_3m_vals else None
+
+            return {
+                'symbol':  symbol,
+                'name':    STOCK_NAMES.get(symbol, symbol),
+                'date':    f"{cur['revenue_year']}/{int(cur['revenue_month']):02d}",
+                'revenue': rev_cur,
+                'mom':     round(mom, 1),
+                'yoy':     round(yoy, 1) if yoy is not None else None,
+                'yoy_3m':  yoy_3m,
+            }
+        except Exception as e:
+            print(f'revenue_radar {symbol}: {e}')
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_fetch_one, sym): sym for sym in _INST_SYMBOLS}
+        done, _ = concurrent.futures.wait(futs, timeout=60)
+        rows = []
+        for f in done:
+            try:
+                r = f.result(timeout=1)
+                if r:
+                    rows.append(r)
+            except Exception:
+                pass
+
+    rows.sort(key=lambda x: (x.get('yoy') or -999), reverse=True)
+    return rows
+
+
+def fetch_contract_liabilities() -> list:
+    """合約負債 QoQ/YoY from FinMind balance sheet for tracked stocks."""
+    from analyzer import STOCK_NAMES
+    start_date = (datetime.now() - timedelta(days=550)).strftime('%Y-%m-%d')
+    TARGET = {'ContractLiabilities', 'ContractLiability', 'DeferredRevenue'}
+
+    def _fetch_one(symbol):
+        try:
+            url = (
+                'https://api.finmindtrade.com/api/v4/data'
+                '?dataset=TaiwanStockBalanceSheet'
+                f'&data_id={symbol}&start_date={start_date}&token='
+            )
+            resp = requests.get(url, timeout=12, headers=HEADERS)
+            body = resp.json()
+            if body.get('status') != 200 or not body.get('data'):
+                return None
+
+            cl = [r for r in body['data']
+                  if r.get('type', '') in TARGET
+                  or 'Contract' in r.get('type', '')
+                  or '合約' in r.get('type', '')
+                  or 'Deferred' in r.get('type', '')]
+            if not cl:
+                return None
+
+            by_date = {}
+            for r in cl:
+                d = r['date']
+                by_date[d] = by_date.get(d, 0) + float(r.get('value', 0) or 0)
+
+            dates = sorted(by_date.keys(), reverse=True)
+            if len(dates) < 2:
+                return None
+
+            val_cur, val_prev = by_date[dates[0]], by_date[dates[1]]
+            if val_cur <= 0 or val_prev <= 0:
+                return None
+
+            qoq = (val_cur - val_prev) / val_prev * 100
+            yoy = None
+            if len(dates) >= 5:
+                val_ly = by_date[dates[4]]
+                if val_ly > 0:
+                    yoy = (val_cur - val_ly) / val_ly * 100
+
+            return {
+                'symbol': symbol,
+                'name':   STOCK_NAMES.get(symbol, symbol),
+                'date':   dates[0],
+                'value':  val_cur,
+                'qoq':    round(qoq, 1),
+                'yoy':    round(yoy, 1) if yoy is not None else None,
+            }
+        except Exception as e:
+            print(f'contract_liab {symbol}: {e}')
+            return None
+
+    with concurrent.futures.ThreadPoolExecutor(max_workers=8) as pool:
+        futs = {pool.submit(_fetch_one, sym): sym for sym in _INST_SYMBOLS}
+        done, _ = concurrent.futures.wait(futs, timeout=60)
+        rows = []
+        for f in done:
+            try:
+                r = f.result(timeout=1)
+                if r:
+                    rows.append(r)
+            except Exception:
+                pass
+
+    rows.sort(key=lambda x: x.get('qoq', 0), reverse=True)
+    return rows
+
+
+def fetch_big_holders(symbol: str) -> dict:
+    """Shareholder distribution — large (千張+) vs retail from FinMind."""
+    start_date = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
+    try:
+        url = (
+            'https://api.finmindtrade.com/api/v4/data'
+            '?dataset=TaiwanStockHoldingSharesPer'
+            f'&data_id={symbol}&start_date={start_date}&token='
+        )
+        resp = requests.get(url, timeout=15, headers=HEADERS)
+        body = resp.json()
+        if body.get('status') != 200 or not body.get('data'):
+            return {'error': '無持股分布資料'}
+
+        records   = body['data']
+        all_dates = sorted(set(r['date'] for r in records), reverse=True)
+        if not all_dates:
+            return {'error': '無資料'}
+
+        def _calc(date_str):
+            day   = [r for r in records if r['date'] == date_str]
+            big   = 0.0  # 千張以上 (1,000,000 shares+)
+            small = 0.0  # 極小散戶
+            for r in day:
+                level = str(r.get('HoldingSharesLevel', '') or r.get('holding_shares_level', ''))
+                pct   = float(r.get('percent', 0) or 0)
+                if '1,000,000' in level:
+                    big += pct
+                elif level.startswith('1 -') or '1-999' in level or level.startswith('1 to'):
+                    small += pct
+            return big, small
+
+        big_cur,  small_cur  = _calc(all_dates[0])
+        big_prev, _          = _calc(all_dates[1]) if len(all_dates) > 1 else (big_cur, 0)
+        trend = 'up' if big_cur > big_prev + 0.1 else ('down' if big_cur < big_prev - 0.1 else 'flat')
+
+        return {
+            'symbol':    symbol,
+            'date':      all_dates[0],
+            'big_pct':   round(big_cur, 2),
+            'small_pct': round(small_cur, 2),
+            'trend':     trend,
+        }
+    except Exception as e:
+        return {'error': str(e)}
+
+
 def fetch_market_indices() -> list:
     """Fetch Taiwan market indices"""
     symbols = {

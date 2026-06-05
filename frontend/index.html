@@ -73,6 +73,9 @@
           <button class="screen-tab" onclick="switchScreen('add',this)">加碼訊號</button>
           <button class="screen-tab" onclick="switchScreen('exit',this)">出場警示</button>
           <button class="screen-tab" onclick="switchScreen('pe',this)">本益比</button>
+          <button class="screen-tab" onclick="switchScreen('inst_radar',this)">法人雷達</button>
+          <button class="screen-tab" onclick="switchScreen('revenue',this)">營收雷達</button>
+          <button class="screen-tab" onclick="switchScreen('contracts',this)">合約負債</button>
         </div>
         <div class="sec-notice" id="screenNotice">⚠ 飆漲後回檔整理・守均線・逢低布局・非追高</div>
       </div>
@@ -218,9 +221,20 @@
       <div class="detail-strats" id="dtStrats"></div>
     </div>
 
+    <div class="detail-section" id="dtAISection" style="display:none">
+      <div class="detail-sec-title">🤖 AI 評分</div>
+      <div class="ai-score-total" id="dtAITotal">--</div>
+      <div id="dtAIBars"></div>
+    </div>
+
     <div class="detail-section" id="dtFinancialSection" style="display:none">
       <div class="detail-sec-title">💹 財報數字</div>
       <div class="detail-indicators" id="dtFinancials"></div>
+    </div>
+
+    <div class="detail-section" id="dtHoldersSection" style="display:none">
+      <div class="detail-sec-title">👥 主力大戶持股</div>
+      <div id="dtHolders"></div>
     </div>
 
     <div class="detail-actions">

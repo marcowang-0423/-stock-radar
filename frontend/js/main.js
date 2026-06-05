@@ -264,7 +264,9 @@ function openDetail(symbol) {
 
   document.getElementById('detailOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  _renderAIScore(s);
   loadFinancials(symbol);
+  loadHolders(symbol);
 }
 
 function closeDetail() {
@@ -292,11 +294,14 @@ let _activeScreen   = 'pullback';
 let _screensLoading = false;
 
 const SCREEN_CONFIG = {
-  pullback: { title: '今日飆股回檔精選',       notice: '⚠ 飆漲後回檔整理・守均線・逢低布局・非追高', showLegend: true  },
-  entry:    { title: '進場時機',               notice: '✅ 回檔均線・價格轉強・成交量放大',           showLegend: false },
-  add:      { title: '加碼訊號',               notice: '🚀 帶量紅K棒・波段創新高',                   showLegend: false },
-  exit:     { title: '出場警示',               notice: '⛔ 帶量黑K・跌破均線・利多出盡',             showLegend: false },
-  pe:       { title: '本益比合理（10–15倍）', notice: '💰 合理估值・安全邊際・市價÷EPS',            showLegend: false },
+  pullback:   { title: '今日飆股回檔精選',       notice: '⚠ 飆漲後回檔整理・守均線・逢低布局・非追高', showLegend: true  },
+  entry:      { title: '進場時機',               notice: '✅ 回檔均線・價格轉強・成交量放大',           showLegend: false },
+  add:        { title: '加碼訊號',               notice: '🚀 帶量紅K棒・波段創新高',                   showLegend: false },
+  exit:       { title: '出場警示',               notice: '⛔ 帶量黑K・跌破均線・利多出盡',             showLegend: false },
+  pe:         { title: '本益比合理（10–15倍）', notice: '💰 合理估值・安全邊際・市價÷EPS',            showLegend: false },
+  inst_radar: { title: '法人籌碼雷達',           notice: '📊 外資/投信連續買超天數・10日累計籌碼',     showLegend: false },
+  revenue:    { title: '營收爆發雷達',           notice: '📈 月增率・年增率・3月平均年增',             showLegend: false },
+  contracts:  { title: '合約負債排行',           notice: '💼 合約負債先噴→營收噴→EPS噴 先行指標',    showLegend: false },
 };
 
 async function loadScreens() {
@@ -305,11 +310,42 @@ async function loadScreens() {
   try {
     const res  = await fetch(`${BASE}/api/screens`);
     _screenData = await res.json();
-    if (_activeScreen !== 'pullback') renderScreen(_activeScreen);
+    if (_activeScreen !== 'pullback' && !['inst_radar','revenue','contracts'].includes(_activeScreen)) {
+      renderScreen(_activeScreen);
+    }
   } catch (e) {
     console.error('screens load error', e);
   } finally {
     _screensLoading = false;
+  }
+}
+
+let _radarData    = null;
+let _radarsLoading = false;
+
+async function loadRadars() {
+  if (_radarsLoading) return;
+  _radarsLoading = true;
+  const el = document.getElementById('recCards');
+  el.innerHTML = '<div class="rec-loading"><div class="spinner"></div><p>雷達掃描中…<br><small>首次約需 1–2 分鐘</small></p></div>';
+  try {
+    const [r1, r2, r3] = await Promise.all([
+      fetch(`${BASE}/api/radar/institutional`),
+      fetch(`${BASE}/api/radar/revenue`),
+      fetch(`${BASE}/api/radar/contracts`),
+    ]);
+    const [d1, d2, d3] = await Promise.all([r1.json(), r2.json(), r3.json()]);
+    _radarData = {
+      inst_radar: d1.data || [],
+      revenue:    d2.data || [],
+      contracts:  d3.data || [],
+    };
+    if (['inst_radar','revenue','contracts'].includes(_activeScreen)) renderScreen(_activeScreen);
+  } catch (e) {
+    console.error('loadRadars error', e);
+    el.innerHTML = '<div class="empty-state"><span>雷達資料載入失敗</span></div>';
+  } finally {
+    _radarsLoading = false;
   }
 }
 
@@ -330,6 +366,19 @@ function switchScreen(type, btn) {
 function renderScreen(type) {
   const el = document.getElementById('recCards');
   if (type === 'pullback') { renderRecCards(_recData); return; }
+
+  // Radar screens
+  if (['inst_radar','revenue','contracts'].includes(type)) {
+    if (!_radarData) { loadRadars(); return; }
+    const stocks = _radarData[type] || [];
+    if (!stocks.length) {
+      el.innerHTML = '<div class="empty-state"><span>今日無資料</span><small>可能為假日或資料尚未更新</small></div>';
+      return;
+    }
+    const builders = { inst_radar: buildInstRadarCard, revenue: buildRevenueCard, contracts: buildContractCard };
+    el.innerHTML = stocks.map(s => builders[type](s)).join('');
+    return;
+  }
 
   if (!_screenData) {
     el.innerHTML = '<div class="rec-loading"><div class="spinner"></div><p>載入分析中…<br><small>首次約需 1–2 分鐘</small></p></div>';
@@ -417,6 +466,137 @@ function buildPECard(s) {
     </div>
     <div class="card-reason">${escHtml(reason)}</div>
   </div>`;
+}
+
+// ── Radar Card Builders ───────────────────────────────────
+function buildInstRadarCard(s) {
+  const fs = s.foreign_streak, ts = s.trust_streak;
+  const fNet = Math.round((s.foreign_net || 0) / 1000);
+  const tNet = Math.round((s.trust_net   || 0) / 1000);
+  const sign = v => v >= 0 ? '+' : '';
+  const hasBuy = fs > 0 || ts > 0;
+  return `<div class="stock-card${hasBuy ? '' : ' card-exit'}" onclick="openRadarDetail('inst_radar','${escHtml(s.symbol)}')">
+    <div class="risk-dot ${hasBuy ? 'medium' : 'high'}"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    <div class="card-tags" style="margin-top:8px;gap:5px">
+      ${fs !== 0 ? `<span class="streak-badge ${fs > 0 ? 'buy' : 'sell'}">外資${fs > 0 ? '連買' : '連賣'}${Math.abs(fs)}天</span>` : ''}
+      ${ts !== 0 ? `<span class="streak-badge ${ts > 0 ? 'buy' : 'sell'}">投信${ts > 0 ? '連買' : '連賣'}${Math.abs(ts)}天</span>` : ''}
+    </div>
+    <div class="card-metric ${fNet >= 0 ? 'up' : 'dn'}" style="margin-top:6px">外資 ${sign(fNet)}${fNet.toLocaleString()}K</div>
+    <div class="card-metric ${tNet >= 0 ? 'up' : 'dn'}" style="margin-top:4px">投信 ${sign(tNet)}${tNet.toLocaleString()}K</div>
+  </div>`;
+}
+
+function buildRevenueCard(s) {
+  const yoy = s.yoy, mom = s.mom;
+  const sign = v => (v != null && v >= 0) ? '+' : '';
+  const yoyCls = (yoy || 0) >= 30 ? 'bull' : (yoy || 0) >= 10 ? 'blue' : (yoy || 0) >= 0 ? '' : 'bear';
+  const momCls = (mom || 0) >= 10 ? 'bull' : (mom || 0) >= 0 ? 'blue' : 'bear';
+  return `<div class="stock-card" onclick="openRadarDetail('revenue','${escHtml(s.symbol)}')">
+    <div class="risk-dot ${(yoy || 0) >= 20 ? 'low' : 'medium'}"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    <div style="font-size:10px;color:var(--txt3);margin-top:2px">${escHtml(s.date)}</div>
+    <div class="card-metric ${(yoy || 0) >= 0 ? 'up' : 'dn'}" style="margin-top:8px">年增 ${yoy != null ? sign(yoy)+yoy+'%' : '--'}</div>
+    <div class="card-tags" style="margin-top:6px">
+      <span class="tag ${momCls}">月增 ${sign(mom)}${mom}%</span>
+      ${s.yoy_3m != null ? `<span class="tag ${(s.yoy_3m || 0) >= 20 ? 'bull' : 'blue'}">3月均 ${sign(s.yoy_3m)}${s.yoy_3m}%</span>` : ''}
+    </div>
+  </div>`;
+}
+
+function buildContractCard(s) {
+  const sign = v => v >= 0 ? '+' : '';
+  const fmt  = v => v != null ? `${sign(v)}${v}%` : '--';
+  const val  = s.value ? (s.value / 1e8).toFixed(1) + '億' : '--';
+  return `<div class="stock-card" onclick="openRadarDetail('contracts','${escHtml(s.symbol)}')">
+    <div class="risk-dot ${(s.qoq || 0) >= 20 ? 'low' : 'medium'}"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name || s.symbol)}</div>
+    <div style="font-size:10px;color:var(--txt3);margin-top:2px">${escHtml(s.date)}</div>
+    <div class="card-metric ${(s.qoq || 0) >= 0 ? 'up' : 'dn'}" style="margin-top:8px">QoQ ${fmt(s.qoq)}</div>
+    <div class="card-tags" style="margin-top:6px">
+      ${s.yoy != null ? `<span class="tag ${(s.yoy || 0) >= 20 ? 'bull' : 'blue'}">YoY ${fmt(s.yoy)}</span>` : ''}
+      <span class="tag blue">餘額 ${val}</span>
+    </div>
+  </div>`;
+}
+
+function openRadarDetail(type, symbol) {
+  _currentSymbol = symbol;
+  if (window.innerWidth >= 1024) loadKline(symbol, _currentPeriod);
+
+  const stocks = _radarData?.[type] || [];
+  const s = stocks.find(r => r.symbol === symbol);
+  if (!s) return;
+
+  document.getElementById('dtSym').textContent   = s.symbol;
+  document.getElementById('dtName').textContent  = s.name || s.symbol;
+  document.getElementById('dtTheme').style.display = 'none';
+  document.getElementById('dtPrice').textContent = '--';
+  document.getElementById('dtScore').textContent = '--';
+  const rEl = document.getElementById('dtRisk');
+  rEl.textContent = '--'; rEl.className = 'ps-val';
+
+  const sign = v => v >= 0 ? '+' : '';
+  let reasons = [], indHtml = '';
+  const pbLbl = document.getElementById('dtPullbackLabel');
+  const pbVal = document.getElementById('dtPullback');
+
+  if (type === 'inst_radar') {
+    pbLbl.textContent  = '外資連買';
+    pbVal.textContent  = `${Math.abs(s.foreign_streak)} 天`;
+    pbVal.className    = `ps-val ${s.foreign_streak > 0 ? 'up' : 'dn'}`;
+    const fN = Math.round((s.foreign_net || 0) / 1000);
+    const tN = Math.round((s.trust_net   || 0) / 1000);
+    const dN = Math.round((s.dealer_net  || 0) / 1000);
+    reasons = [
+      `外資連${s.foreign_streak > 0 ? '買' : '賣'}${Math.abs(s.foreign_streak)}天`,
+      s.trust_streak !== 0 ? `投信連${s.trust_streak > 0 ? '買' : '賣'}${Math.abs(s.trust_streak)}天` : null,
+    ].filter(Boolean);
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">外資今日</div><div class="ind-val ${fN>=0?'up':'dn'}">${sign(fN)}${fN.toLocaleString()} 千股</div></div>
+      <div class="ind-item"><div class="ind-label">外資連續</div><div class="ind-val ${s.foreign_streak>0?'up':'dn'}">${s.foreign_streak>0?'連買':'連賣'} ${Math.abs(s.foreign_streak)} 天</div></div>
+      <div class="ind-item"><div class="ind-label">投信今日</div><div class="ind-val ${tN>=0?'up':'dn'}">${sign(tN)}${tN.toLocaleString()} 千股</div></div>
+      <div class="ind-item"><div class="ind-label">投信連續</div><div class="ind-val ${s.trust_streak>0?'up':'dn'}">${s.trust_streak>0?'連買':'連賣'} ${Math.abs(s.trust_streak)} 天</div></div>
+      <div class="ind-item"><div class="ind-label">自營商今日</div><div class="ind-val ${dN>=0?'up':'dn'}">${sign(dN)}${dN.toLocaleString()} 千股</div></div>
+      <div class="ind-item"><div class="ind-label">合計今日</div><div class="ind-val ${(s.total_net||0)>=0?'up':'dn'}">${sign(Math.round((s.total_net||0)/1000))}${Math.round((s.total_net||0)/1000).toLocaleString()} 千股</div></div>`;
+  } else if (type === 'revenue') {
+    pbLbl.textContent = 'YoY 年增率';
+    pbVal.textContent = s.yoy != null ? `${sign(s.yoy)}${s.yoy}%` : '--';
+    pbVal.className   = `ps-val ${(s.yoy || 0) >= 0 ? 'up' : 'dn'}`;
+    reasons = [`月增率 ${sign(s.mom)}${s.mom}%`, s.yoy_3m != null ? `3月均年增 ${sign(s.yoy_3m)}${s.yoy_3m}%` : null].filter(Boolean);
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">月增率 MoM</div><div class="ind-val ${s.mom>=0?'up':'dn'}">${sign(s.mom)}${s.mom}%</div></div>
+      <div class="ind-item"><div class="ind-label">年增率 YoY</div><div class="ind-val ${(s.yoy||0)>=0?'up':'dn'}">${s.yoy!=null?sign(s.yoy)+s.yoy+'%':'--'}</div></div>
+      <div class="ind-item"><div class="ind-label">3月均年增</div><div class="ind-val ${(s.yoy_3m||0)>=0?'up':'dn'}">${s.yoy_3m!=null?sign(s.yoy_3m)+s.yoy_3m+'%':'--'}</div></div>
+      <div class="ind-item"><div class="ind-label">資料月份</div><div class="ind-val">${escHtml(s.date)}</div></div>`;
+  } else if (type === 'contracts') {
+    pbLbl.textContent = 'QoQ 季增率';
+    pbVal.textContent = `${sign(s.qoq)}${s.qoq}%`;
+    pbVal.className   = `ps-val ${(s.qoq || 0) >= 0 ? 'up' : 'dn'}`;
+    reasons = [`合約負債季增 ${sign(s.qoq)}${s.qoq}%`, s.yoy != null ? `年增 ${sign(s.yoy)}${s.yoy}%` : null].filter(Boolean);
+    const val = s.value ? (s.value / 1e8).toFixed(1) + '億' : '--';
+    indHtml = `
+      <div class="ind-item"><div class="ind-label">QoQ 季增率</div><div class="ind-val ${(s.qoq||0)>=0?'up':'dn'}">${sign(s.qoq)}${s.qoq}%</div></div>
+      <div class="ind-item"><div class="ind-label">YoY 年增率</div><div class="ind-val ${(s.yoy||0)>=0?'up':'dn'}">${s.yoy!=null?sign(s.yoy)+s.yoy+'%':'--'}</div></div>
+      <div class="ind-item"><div class="ind-label">合約負債餘額</div><div class="ind-val">${val}</div></div>
+      <div class="ind-item"><div class="ind-label">資料日期</div><div class="ind-val">${escHtml(s.date)}</div></div>`;
+  }
+
+  document.getElementById('dtReasons').innerHTML = reasons.length
+    ? reasons.map(r => `<li>${escHtml(r)}</li>`).join('')
+    : '<li>查看 K 線圖與更多資料</li>';
+  document.getElementById('dtIndicators').innerHTML = indHtml;
+  document.getElementById('dtStratSection').style.display = 'none';
+  document.getElementById('dtAISection').style.display = 'none';
+
+  document.getElementById('detailOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  _renderAIScore(s);
+  loadFinancials(symbol);
+  loadHolders(symbol);
 }
 
 function openScreenDetail(type, symbol) {
@@ -516,7 +696,133 @@ function openScreenDetail(type, symbol) {
 
   document.getElementById('detailOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  _renderAIScore(s);
   loadFinancials(symbol);
+  loadHolders(symbol);
+}
+
+// ── AI Score ──────────────────────────────────────────────
+function _renderAIScore(s) {
+  const section = document.getElementById('dtAISection');
+  const totalEl = document.getElementById('dtAITotal');
+  const barsEl  = document.getElementById('dtAIBars');
+  if (!section || !totalEl || !barsEl) return;
+
+  // Technical (max 35)
+  let tech = 0, hasTech = false;
+  if (s.rsi != null) {
+    hasTech = true;
+    if      (s.rsi >= 30 && s.rsi <= 50) tech += 12;
+    else if (s.rsi > 50  && s.rsi <= 65) tech +=  7;
+    else if (s.rsi < 30)                 tech += 10;
+    else                                  tech +=  2;
+  }
+  if (s.macd_status != null) {
+    hasTech = true;
+    tech += ['黃金交叉','即將交叉','多頭'].includes(s.macd_status) ? 13 : 3;
+  }
+  const strats = s.strategies || [];
+  if (strats.includes('縮量回檔'))   { tech += 5; hasTech = true; }
+  if (strats.includes('均線守支撐')) { tech += 5; hasTech = true; }
+  tech = Math.min(35, Math.max(0, tech));
+
+  // Chip (max 30) — from loaded institutional data
+  let chip = 0;
+  if (typeof _instData !== 'undefined' && _instData && !_instData.error) {
+    const allRows = _instData.stocks || _instData.top_buy || [];
+    const ir = allRows.find(r => r.symbol === s.symbol);
+    if (ir) {
+      if (ir.foreign_net > 0) chip += 12;
+      if (ir.trust_net   > 0) chip += 10;
+      if (ir.total_net   > 0) chip +=  8;
+    }
+  }
+  chip = Math.min(30, chip);
+
+  const total = tech + chip;
+  const cls = total >= 55 ? 'green' : total >= 35 ? 'yellow' : 'red';
+
+  totalEl.textContent = total;
+  totalEl.className   = `ai-score-total ${cls}`;
+
+  barsEl.innerHTML = `
+    <div class="ai-score-label">${total >= 55 ? '強勢訊號' : total >= 35 ? '中性觀望' : '謹慎留意'}</div>
+    <div class="ai-score-bars">
+      <div class="ai-bar-row">
+        <div class="ai-bar-head"><span class="ai-bar-label">🔵 技術面 /35</span><span class="ai-bar-val">${hasTech ? tech : '--'}</span></div>
+        <div class="ai-bar-track"><div class="ai-bar-fill tech" style="width:${hasTech ? tech/35*100 : 0}%"></div></div>
+      </div>
+      <div class="ai-bar-row">
+        <div class="ai-bar-head"><span class="ai-bar-label">🟡 籌碼面 /30</span><span class="ai-bar-val">${chip}</span></div>
+        <div class="ai-bar-track"><div class="ai-bar-fill chip" style="width:${chip/30*100}%"></div></div>
+      </div>
+      <div class="ai-bar-row">
+        <div class="ai-bar-head"><span class="ai-bar-label">🟢 基本面 /35</span><span class="ai-bar-val" id="dtAIFundVal">載入中…</span></div>
+        <div class="ai-bar-track"><div class="ai-bar-fill fund" style="width:0%" id="dtAIFundBar"></div></div>
+      </div>
+    </div>`;
+
+  section.style.display = '';
+}
+
+function _updateAIFund(d) {
+  const fundValEl = document.getElementById('dtAIFundVal');
+  const fundBarEl = document.getElementById('dtAIFundBar');
+  const totalEl   = document.getElementById('dtAITotal');
+  if (!fundValEl || !fundBarEl || !totalEl) return;
+
+  let fund = 0;
+  if (d.gross_margin    != null) fund += d.gross_margin    > 0.5 ? 12 : d.gross_margin > 0.3 ? 8 : 4;
+  if (d.revenue_growth  != null) fund += d.revenue_growth  > 0.3 ? 12 : d.revenue_growth > 0.1 ? 8 : d.revenue_growth > 0 ? 5 : 0;
+  if (d.earnings_growth != null) fund += d.earnings_growth > 0.3 ? 11 : d.earnings_growth > 0.1 ? 7 : d.earnings_growth > 0 ? 4 : 0;
+  fund = Math.min(35, fund);
+
+  fundValEl.textContent   = fund;
+  fundBarEl.style.width   = `${fund/35*100}%`;
+  const newTotal = (parseInt(totalEl.textContent) || 0) + fund;
+  totalEl.textContent = newTotal;
+  totalEl.className   = `ai-score-total ${newTotal >= 70 ? 'green' : newTotal >= 50 ? 'yellow' : 'red'}`;
+  totalEl.nextElementSibling?.querySelector?.('.ai-score-label')
+    && (totalEl.nextElementSibling.querySelector('.ai-score-label').textContent =
+        newTotal >= 70 ? '強勢股 🟢' : newTotal >= 50 ? '觀察 🟡' : '謹慎 🔴');
+}
+
+// ── Big Holders ───────────────────────────────────────────
+async function loadHolders(symbol) {
+  const section = document.getElementById('dtHoldersSection');
+  const el      = document.getElementById('dtHolders');
+  if (!section || !el) return;
+  section.style.display = '';
+  el.innerHTML = '<div class="loading-text" style="padding:6px 0;font-size:11px">載入持股分布中…</div>';
+
+  try {
+    const res = await fetch(`${BASE}/api/stock/${symbol}/holders`);
+    const d   = await res.json();
+    if (d.error) { section.style.display = 'none'; return; }
+
+    const trendText = d.trend === 'up' ? '大戶持續增加 ▲' : d.trend === 'down' ? '大戶持續減少 ▼' : '大戶持平 —';
+    const trendCls  = d.trend === 'up' ? 'up' : d.trend === 'down' ? 'down' : 'flat';
+
+    el.innerHTML = `
+      <div class="holder-row">
+        <div class="holder-item">
+          <div class="holder-pct up">${d.big_pct.toFixed(1)}%</div>
+          <div class="holder-lbl">千張大戶</div>
+          <div class="holder-trend-badge ${trendCls}">${trendText}</div>
+        </div>
+        <div class="holder-item">
+          <div class="holder-pct dn">${d.small_pct.toFixed(1)}%</div>
+          <div class="holder-lbl">極小散戶</div>
+        </div>
+      </div>
+      <div class="holder-bar-wrap">
+        <div class="holder-bar-big" style="width:${Math.min(d.big_pct, 100)}%"></div>
+        <div class="holder-bar-rest"></div>
+      </div>
+      <div class="holder-date">資料日期：${escHtml(d.date)}</div>`;
+  } catch (e) {
+    section.style.display = 'none';
+  }
 }
 
 // ── Financials ────────────────────────────────────────────
@@ -531,10 +837,10 @@ async function loadFinancials(symbol) {
   try {
     const res = await fetch(`${BASE}/api/stock/${symbol}/financials`);
     const d   = await res.json();
-    if (d.error) { section.style.display = 'none'; return; }
+    if (d.error) { section.style.display = 'none'; _updateAIFund({}); return; }
 
-    const pct = v => v != null ? `${(v * 100).toFixed(1)}%` : '--';
-    const num = v => v != null ? v.toFixed(2) : '--';
+    const pct  = v => v != null ? `${(v * 100).toFixed(1)}%` : '--';
+    const num  = v => v != null ? v.toFixed(2) : '--';
     const sign = v => v > 0 ? '+' : '';
 
     let html = '';
@@ -547,8 +853,9 @@ async function loadFinancials(symbol) {
     if (d.trailing_pe      != null) html += `<div class="ind-item"><div class="ind-label">本益比 (PE)</div><div class="ind-val gold">${num(d.trailing_pe)} 倍</div></div>`;
     if (d.dividend_yield   != null) html += `<div class="ind-item"><div class="ind-label">殖利率</div><div class="ind-val gold">${pct(d.dividend_yield)}</div></div>`;
 
-    if (!html) { section.style.display = 'none'; return; }
-    el.innerHTML = html;
+    if (!html) { section.style.display = 'none'; }
+    else el.innerHTML = html;
+    _updateAIFund(d);
   } catch (e) {
     section.style.display = 'none';
   }

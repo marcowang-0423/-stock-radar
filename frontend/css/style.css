@@ -529,6 +529,52 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
   .stock-card:active { transform: translateY(-2px); }
 }
 
+/* ── Streak Badge (法人雷達) ─────────────────────────── */
+.streak-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700;
+  padding: 2px 8px; border-radius: 10px;
+}
+.streak-badge.buy  { background: var(--up-bg); color: var(--up); }
+.streak-badge.sell { background: var(--dn-bg); color: var(--dn); }
+
+/* ── AI Score ────────────────────────────────────────── */
+.ai-score-total {
+  font-size: 40px; font-weight: 900; text-align: center;
+  line-height: 1; padding: 10px 0 4px;
+}
+.ai-score-total.green  { color: var(--dn); }
+.ai-score-total.yellow { color: var(--gold); }
+.ai-score-total.red    { color: var(--up); }
+.ai-score-label { font-size: 12px; color: var(--txt2); text-align: center; margin-bottom: 12px; font-weight: 600; }
+.ai-score-bars { display: flex; flex-direction: column; gap: 10px; }
+.ai-bar-row { display: flex; flex-direction: column; gap: 4px; }
+.ai-bar-head { display: flex; justify-content: space-between; }
+.ai-bar-label { font-size: 11px; color: var(--txt2); }
+.ai-bar-val   { font-size: 11px; font-weight: 700; }
+.ai-bar-track { height: 6px; background: var(--bg3); border-radius: 3px; overflow: hidden; }
+.ai-bar-fill  { height: 100%; border-radius: 3px; transition: width .5s ease; }
+.ai-bar-fill.tech { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
+.ai-bar-fill.chip { background: linear-gradient(90deg, #d29922, #f0b429); }
+.ai-bar-fill.fund { background: linear-gradient(90deg, #3fb950, #57d66e); }
+
+/* ── Holder Chart ────────────────────────────────────── */
+.holder-row { display: flex; gap: 12px; margin-bottom: 10px; }
+.holder-item { flex: 1; text-align: center; }
+.holder-pct  { font-size: 26px; font-weight: 800; line-height: 1; }
+.holder-lbl  { font-size: 10px; color: var(--txt3); margin-top: 2px; }
+.holder-trend-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; margin-top: 4px;
+}
+.holder-trend-badge.up   { color: var(--up); }
+.holder-trend-badge.down { color: var(--dn); }
+.holder-trend-badge.flat { color: var(--txt3); }
+.holder-bar-wrap { display: flex; height: 7px; border-radius: 4px; overflow: hidden; margin-top: 8px; }
+.holder-bar-big   { background: var(--up); transition: width .4s; }
+.holder-bar-rest  { background: var(--border); flex: 1; }
+.holder-date { font-size: 10px; color: var(--txt3); margin-top: 5px; }
+
 /* ── Stock Detail Modal ──────────────────────────────── */
 .detail-overlay {
   position: fixed; inset: 0; z-index: 400;

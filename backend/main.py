@@ -109,6 +109,54 @@ async def get_screens():
     return data
 
 
+@app.get("/api/radar/institutional")
+async def get_inst_radar():
+    from data_fetcher import fetch_institutional_radar
+    key = "inst_radar"
+    if not _stale(key, 3600):
+        return {"data": _cache[key]}
+    data = await _run(fetch_institutional_radar)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return {"data": data}
+
+
+@app.get("/api/radar/revenue")
+async def get_revenue_radar():
+    from data_fetcher import fetch_revenue_radar
+    key = "rev_radar"
+    if not _stale(key, 14400):
+        return {"data": _cache[key]}
+    data = await _run(fetch_revenue_radar)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return {"data": data}
+
+
+@app.get("/api/radar/contracts")
+async def get_contracts():
+    from data_fetcher import fetch_contract_liabilities
+    key = "contracts"
+    if not _stale(key, 86400):
+        return {"data": _cache[key]}
+    data = await _run(fetch_contract_liabilities)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return {"data": data}
+
+
+@app.get("/api/stock/{symbol}/holders")
+async def get_holders(symbol: str):
+    from data_fetcher import fetch_big_holders
+    key = f"holders_{symbol}"
+    if not _stale(key, 86400):
+        return _cache[key]
+    data = await _run(fetch_big_holders, symbol)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
 @app.get("/api/stock/{symbol}/inst-history")
 async def get_inst_history(symbol: str):
     from data_fetcher import fetch_inst_history

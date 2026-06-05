@@ -12,16 +12,44 @@ let _instChart  = null;
 let _instType   = 'total';
 let _instFilter = 'buy';   // 'buy' | 'sell'
 let _instData   = null;
+let _indicesData = null;
 
 // ── Market Indices Ticker ────────────────────────────────
 async function loadIndices() {
   try {
     const res = await fetch(`${BASE}/api/indices`);
     const json = await res.json();
-    renderTicker(json.data || []);
+    _indicesData = json.data || [];
+    renderTicker(_indicesData);
+    _trySentiment();
   } catch (e) {
     console.warn('indices error', e);
   }
+}
+
+function _trySentiment() {
+  if (!_indicesData || !_instData || _instData.error) return;
+
+  let score = 0;
+  const twii = _indicesData.find(d => d.name === '加權指數');
+  if (twii) score += twii.is_up ? 1.5 : -1.5;
+
+  const s = _instData.summary || {};
+  score += (s.foreign_total || 0) > 0 ? 1 : -1;
+  score += (s.trust_total   || 0) > 0 ? 0.5 : -0.5;
+
+  const dot = document.getElementById('sentimentDot');
+  const lbl = document.getElementById('sentimentLabel');
+  if (!dot || !lbl) return;
+
+  let cls, text;
+  if      (score >= 1.5) { cls = 'green';  text = '市場偏多'; }
+  else if (score >= 0)   { cls = 'yellow'; text = '中性觀望'; }
+  else                   { cls = 'red';    text = '市場偏空'; }
+
+  dot.className = `sentiment-dot ${cls}`;
+  lbl.className = `sentiment-label ${cls}`;
+  lbl.textContent = text;
 }
 
 function renderTicker(items) {
@@ -179,8 +207,44 @@ async function loadKline(symbol, period = '3mo') {
     chgEl.textContent = `${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%`;
     chgEl.className = 'meta-change ' + (pct >= 0 ? 'up' : 'dn');
 
+    loadInstHistory(symbol);  // overlay institutional markers
+
   } catch (e) {
     console.error('loadKline', e);
+  }
+}
+
+async function loadInstHistory(symbol) {
+  if (!_candleSeries) return;
+  try {
+    const res  = await fetch(`${BASE}/api/stock/${symbol}/inst-history`);
+    const data = await res.json();
+    if (!data.history?.length) return;
+    if (typeof _currentSymbol !== 'undefined' && _currentSymbol !== symbol) return;
+
+    const history = data.history;
+    // Pick top 8 most significant days by |foreign_net|
+    const sorted = [...history].sort((a, b) => Math.abs(b.foreign_net) - Math.abs(a.foreign_net));
+    const top = sorted.slice(0, 8);
+
+    const markers = top
+      .filter(r => r.foreign_net !== 0)
+      .map(r => {
+        const isBuy = r.foreign_net > 0;
+        const k = Math.round(Math.abs(r.foreign_net) / 1000);
+        return {
+          time:     r.date,
+          position: isBuy ? 'belowBar' : 'aboveBar',
+          color:    isBuy ? '#f85149' : '#3fb950',
+          shape:    isBuy ? 'arrowUp' : 'arrowDown',
+          text:     isBuy ? `+${k}K` : `-${k}K`,
+        };
+      })
+      .sort((a, b) => (a.time > b.time ? 1 : -1));  // must be chronological
+
+    _candleSeries.setMarkers(markers);
+  } catch (e) {
+    console.warn('loadInstHistory', e);
   }
 }
 
@@ -323,6 +387,8 @@ async function loadInstitutional() {
     document.getElementById('sumTrust').className = `sum-val ${t.cls}`;
     document.getElementById('sumDealer').textContent = d.text;
     document.getElementById('sumDealer').className = `sum-val ${d.cls}`;
+
+    _trySentiment();
 
     // On mobile, only render the chart if the inst panel is currently visible.
     // If hidden, showPage('inst') will trigger _renderInstChart when user switches tabs.

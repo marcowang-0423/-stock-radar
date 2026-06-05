@@ -81,6 +81,16 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .ticker-item.dn .ticker-val { color: var(--dn); }
 .ticker-item.dn .ticker-chg { background: var(--dn-bg); color: var(--dn); }
 
+.sentiment-wrap { display: flex; align-items: center; gap: 5px; flex-shrink: 0; cursor: default; }
+.sentiment-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--txt3); transition: background .4s, box-shadow .4s; }
+.sentiment-label { font-size: 11px; font-weight: 600; color: var(--txt2); transition: color .4s; white-space: nowrap; }
+.sentiment-dot.green  { background: var(--dn);  box-shadow: 0 0 7px var(--dn); }
+.sentiment-dot.yellow { background: var(--gold); box-shadow: 0 0 7px var(--gold); }
+.sentiment-dot.red    { background: var(--up);  box-shadow: 0 0 7px var(--up); }
+.sentiment-label.green  { color: var(--dn); }
+.sentiment-label.yellow { color: var(--gold); }
+.sentiment-label.red    { color: var(--up); }
+
 .header-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
 .update-time { font-size: 11px; color: var(--txt3); font-variant-numeric: tabular-nums; }
 .btn-refresh {

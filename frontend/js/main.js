@@ -264,6 +264,7 @@ function openDetail(symbol) {
 
   document.getElementById('detailOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  loadFinancials(symbol);
 }
 
 function closeDetail() {
@@ -515,6 +516,42 @@ function openScreenDetail(type, symbol) {
 
   document.getElementById('detailOverlay').classList.add('open');
   document.body.style.overflow = 'hidden';
+  loadFinancials(symbol);
+}
+
+// ── Financials ────────────────────────────────────────────
+async function loadFinancials(symbol) {
+  const section = document.getElementById('dtFinancialSection');
+  const el      = document.getElementById('dtFinancials');
+  if (!section || !el) return;
+
+  section.style.display = '';
+  el.innerHTML = '<div class="loading-text" style="padding:6px 0;font-size:11px">載入財報中…</div>';
+
+  try {
+    const res = await fetch(`${BASE}/api/stock/${symbol}/financials`);
+    const d   = await res.json();
+    if (d.error) { section.style.display = 'none'; return; }
+
+    const pct = v => v != null ? `${(v * 100).toFixed(1)}%` : '--';
+    const num = v => v != null ? v.toFixed(2) : '--';
+    const sign = v => v > 0 ? '+' : '';
+
+    let html = '';
+    if (d.gross_margin     != null) html += `<div class="ind-item"><div class="ind-label">毛利率</div><div class="ind-val ${d.gross_margin > 0.3 ? 'up' : ''}">${pct(d.gross_margin)}</div></div>`;
+    if (d.operating_margin != null) html += `<div class="ind-item"><div class="ind-label">營業利益率</div><div class="ind-val ${d.operating_margin > 0 ? 'accent' : 'dn'}">${pct(d.operating_margin)}</div></div>`;
+    if (d.trailing_eps     != null) html += `<div class="ind-item"><div class="ind-label">EPS (近12月)</div><div class="ind-val accent">${num(d.trailing_eps)}</div></div>`;
+    if (d.forward_eps      != null) html += `<div class="ind-item"><div class="ind-label">EPS (預估)</div><div class="ind-val accent">${num(d.forward_eps)}</div></div>`;
+    if (d.revenue_growth   != null) html += `<div class="ind-item"><div class="ind-label">營收成長 YoY</div><div class="ind-val ${d.revenue_growth >= 0 ? 'up' : 'dn'}">${sign(d.revenue_growth)}${pct(d.revenue_growth)}</div></div>`;
+    if (d.earnings_growth  != null) html += `<div class="ind-item"><div class="ind-label">獲利成長 YoY</div><div class="ind-val ${d.earnings_growth >= 0 ? 'up' : 'dn'}">${sign(d.earnings_growth)}${pct(d.earnings_growth)}</div></div>`;
+    if (d.trailing_pe      != null) html += `<div class="ind-item"><div class="ind-label">本益比 (PE)</div><div class="ind-val gold">${num(d.trailing_pe)} 倍</div></div>`;
+    if (d.dividend_yield   != null) html += `<div class="ind-item"><div class="ind-label">殖利率</div><div class="ind-val gold">${pct(d.dividend_yield)}</div></div>`;
+
+    if (!html) { section.style.display = 'none'; return; }
+    el.innerHTML = html;
+  } catch (e) {
+    section.style.display = 'none';
+  }
 }
 
 // ── Utils ─────────────────────────────────────────────────

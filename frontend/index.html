@@ -25,6 +25,10 @@
   <div class="ticker-bar" id="tickerBar">
     <span class="ticker-loading">載入中…</span>
   </div>
+  <div class="sentiment-wrap" id="sentimentWrap" title="大盤情緒">
+    <div class="sentiment-dot" id="sentimentDot"></div>
+    <span class="sentiment-label" id="sentimentLabel">--</span>
+  </div>
   <div class="header-right">
     <span class="update-time" id="updateTime">--:--</span>
     <button class="btn-refresh" id="btnRefresh" onclick="refreshAll()">↺</button>
@@ -212,6 +216,11 @@
     <div class="detail-section" id="dtStratSection">
       <div class="detail-sec-title">🎯 策略命中</div>
       <div class="detail-strats" id="dtStrats"></div>
+    </div>
+
+    <div class="detail-section" id="dtFinancialSection" style="display:none">
+      <div class="detail-sec-title">💹 財報數字</div>
+      <div class="detail-indicators" id="dtFinancials"></div>
     </div>
 
     <div class="detail-actions">

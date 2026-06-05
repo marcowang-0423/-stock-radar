@@ -109,6 +109,30 @@ async def get_screens():
     return data
 
 
+@app.get("/api/stock/{symbol}/inst-history")
+async def get_inst_history(symbol: str):
+    from data_fetcher import fetch_inst_history
+    key = f"inst_hist_{symbol}"
+    if not _stale(key, 3600):
+        return _cache[key]
+    data = await _run(fetch_inst_history, symbol)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
+@app.get("/api/stock/{symbol}/financials")
+async def get_financials(symbol: str):
+    from data_fetcher import fetch_stock_financials
+    key = f"fin_{symbol}"
+    if not _stale(key, 21600):
+        return _cache[key]
+    data = await _run(fetch_stock_financials, symbol)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
 @app.get("/api/stock/{symbol}/kline")
 async def get_kline(symbol: str, period: str = Query("3mo")):
     from data_fetcher import fetch_stock_kline

@@ -182,6 +182,71 @@ def fetch_stock_kline(symbol: str, period: str = "3mo") -> dict:
     return {'error': f'無法取得 {symbol} 的K線資料'}
 
 
+def fetch_inst_history(symbol: str) -> dict:
+    """Fetch 90-day institutional buy/sell history for a single stock (for K-line overlay)."""
+    from datetime import datetime, timedelta
+    start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
+    try:
+        url = (
+            'https://api.finmindtrade.com/api/v4/data'
+            '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+            f'&data_id={symbol}&start_date={start_date}&token='
+        )
+        resp = requests.get(url, timeout=15, headers=HEADERS)
+        body = resp.json()
+        if body.get('status') != 200 or not body.get('data'):
+            return {'symbol': symbol, 'history': []}
+
+        from collections import defaultdict
+        by_date = defaultdict(lambda: {'foreign': 0, 'trust': 0, 'dealer': 0})
+        for r in body['data']:
+            net = r['buy'] - r['sell']
+            name = r['name']
+            if name in ('Foreign_Investor', 'Foreign_Dealer_Self'):
+                by_date[r['date']]['foreign'] += net
+            elif name == 'Investment_Trust':
+                by_date[r['date']]['trust'] += net
+            elif name in ('Dealer_self', 'Dealer_Hedging'):
+                by_date[r['date']]['dealer'] += net
+
+        history = []
+        for date, nets in sorted(by_date.items()):
+            history.append({
+                'date': date,
+                'foreign_net': nets['foreign'],
+                'trust_net':   nets['trust'],
+                'dealer_net':  nets['dealer'],
+                'total_net':   nets['foreign'] + nets['trust'] + nets['dealer'],
+            })
+        return {'symbol': symbol, 'history': history}
+    except Exception as e:
+        print(f'inst_history error {symbol}: {e}')
+        return {'symbol': symbol, 'history': []}
+
+
+def fetch_stock_financials(symbol: str) -> dict:
+    """Fetch financial ratios from yfinance for a Taiwan stock."""
+    for suffix in ['.TW', '.TWO']:
+        try:
+            info = yf.Ticker(f"{symbol}{suffix}").info
+            if not info or not info.get('regularMarketPrice'):
+                continue
+            return {
+                'symbol':           symbol,
+                'gross_margin':     info.get('grossMargins'),
+                'operating_margin': info.get('operatingMargins'),
+                'trailing_eps':     info.get('trailingEps'),
+                'forward_eps':      info.get('forwardEps'),
+                'revenue_growth':   info.get('revenueGrowth'),
+                'earnings_growth':  info.get('earningsGrowth'),
+                'trailing_pe':      info.get('trailingPE'),
+                'dividend_yield':   info.get('dividendYield'),
+            }
+        except Exception as e:
+            print(f'financials error {symbol}{suffix}: {e}')
+    return {'error': '無法取得財報資料'}
+
+
 def fetch_market_indices() -> list:
     """Fetch Taiwan market indices"""
     symbols = {

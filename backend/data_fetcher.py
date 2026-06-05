@@ -105,8 +105,9 @@ def fetch_institutional_data(date: str = None) -> dict:
 
     return {
         'date':     best_date,
-        'top_buy':  rows[:15],
-        'top_sell': sorted(rows, key=lambda x: x['total_net'])[:10],
+        'stocks':   rows,                                              # all rows sorted by total_net desc
+        'top_buy':  rows[:15],                                         # backward compat
+        'top_sell': sorted(rows, key=lambda x: x['total_net'])[:10],  # backward compat
         'summary':  summary,
     }
 

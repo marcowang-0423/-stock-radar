@@ -132,8 +132,12 @@
       <div class="sum-card"><div class="sum-label">投信</div><div class="sum-val" id="sumTrust">--</div></div>
       <div class="sum-card"><div class="sum-label">自營商</div><div class="sum-val" id="sumDealer">--</div></div>
     </div>
+    <div class="inst-filter-row">
+      <button class="inst-filter-btn on" id="btnInstBuy"  onclick="switchInstFilter('buy',this)">買超</button>
+      <button class="inst-filter-btn"    id="btnInstSell" onclick="switchInstFilter('sell',this)">賣超</button>
+    </div>
     <div class="inst-chart-wrap"><canvas id="instChart"></canvas></div>
-    <div class="inst-list-head"><span>名稱</span><span>買超(千股)</span></div>
+    <div class="inst-list-head"><span>名稱</span><span id="instListHeaderVal">買超(千股)</span></div>
     <div class="inst-list" id="instList"><div class="loading-text">載入中…</div></div>
   </aside>
 

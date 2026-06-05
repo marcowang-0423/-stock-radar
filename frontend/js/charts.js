@@ -8,9 +8,10 @@ let _candleSeries = null;
 let _volSeries = null;
 let _ma20Series = null;
 let _ma60Series = null;
-let _instChart = null;
-let _instType = 'total';
-let _instData = null;
+let _instChart  = null;
+let _instType   = 'total';
+let _instFilter = 'buy';   // 'buy' | 'sell'
+let _instData   = null;
 
 // ── Market Indices Ticker ────────────────────────────────
 async function loadIndices() {
@@ -191,14 +192,39 @@ function switchInst(type, btn) {
   if (_instData) _renderInstChart(_instData);
 }
 
+function switchInstFilter(filter, btn) {
+  _instFilter = filter;
+  document.querySelectorAll('.inst-filter-btn').forEach(b => b.classList.remove('on'));
+  btn.classList.add('on');
+  if (_instData) _renderInstChart(_instData);
+}
+
 function _renderInstChart(data) {
-  const rows = data.top_buy || [];
+  const allRows = data.stocks || data.top_buy || [];
   const key = _instType === 'foreign' ? 'foreign_net'
              : _instType === 'trust'   ? 'trust_net'
              : 'total_net';
 
-  // Top 8 sorted by the selected key
-  const sorted = [...rows].sort((a, b) => b[key] - a[key]).slice(0, 8);
+  // Update filter button counts
+  const buyCount  = allRows.filter(r => (r[key] || 0) > 0).length;
+  const sellCount = allRows.filter(r => (r[key] || 0) < 0).length;
+  const btnBuy  = document.getElementById('btnInstBuy');
+  const btnSell = document.getElementById('btnInstSell');
+  if (btnBuy)  btnBuy.textContent  = `買超 ${buyCount}`;
+  if (btnSell) btnSell.textContent = `賣超 ${sellCount}`;
+
+  // Update list column header
+  const listHdr = document.getElementById('instListHeaderVal');
+  if (listHdr) listHdr.textContent = _instFilter === 'buy' ? '買超(千股)' : '賣超(千股)';
+
+  // Filter and sort by buy/sell
+  let filtered;
+  if (_instFilter === 'buy') {
+    filtered = allRows.filter(r => (r[key] || 0) > 0).sort((a, b) => (b[key] || 0) - (a[key] || 0));
+  } else {
+    filtered = allRows.filter(r => (r[key] || 0) < 0).sort((a, b) => (a[key] || 0) - (b[key] || 0));
+  }
+  const sorted = filtered.slice(0, 8);
 
   const labels = sorted.map(r => r.name || r.symbol);
   const values = sorted.map(r => Math.round((r[key] || 0) / 1000));  // → 千股

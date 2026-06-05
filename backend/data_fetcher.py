@@ -1,3 +1,4 @@
+import os
 import requests
 import yfinance as yf
 import pandas as pd
@@ -9,6 +10,23 @@ HEADERS = {
     'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
     'Accept': 'application/json',
 }
+
+FINMIND_TOKEN = os.environ.get('FINMIND_TOKEN', '')
+
+
+def _finmind_get(url_base: str, timeout: int = 12) -> dict:
+    """Call FinMind API, log non-200 responses, return body dict."""
+    url = url_base + FINMIND_TOKEN
+    try:
+        resp = requests.get(url, timeout=timeout, headers=HEADERS)
+        body = resp.json()
+        if body.get('status') != 200:
+            print(f'[FinMind] status={body.get("status")} msg={body.get("msg","?")} token_set={bool(FINMIND_TOKEN)}')
+        return body
+    except Exception as e:
+        print(f'[FinMind] request error: {e}')
+        return {}
+
 
 # Theme stocks to track for 三大法人 panel
 _INST_SYMBOLS = [
@@ -35,14 +53,12 @@ def fetch_institutional_data(date: str = None) -> dict:
 
     def _fetch_single(symbol):
         try:
-            url = (
+            body = _finmind_get(
                 'https://api.finmindtrade.com/api/v4/data'
                 '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
                 f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=12, headers=HEADERS)
-            body = resp.json()
-            if body.get('status') != 200 or not body.get('data'):
+            if not body.get('data'):
                 return None
 
             records = body['data']
@@ -197,14 +213,13 @@ def fetch_inst_history(symbol: str) -> dict:
     from datetime import datetime, timedelta
     start_date = (datetime.now() - timedelta(days=90)).strftime('%Y-%m-%d')
     try:
-        url = (
+        body = _finmind_get(
             'https://api.finmindtrade.com/api/v4/data'
             '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
-            f'&data_id={symbol}&start_date={start_date}&token='
+            f'&data_id={symbol}&start_date={start_date}&token=',
+            timeout=15,
         )
-        resp = requests.get(url, timeout=15, headers=HEADERS)
-        body = resp.json()
-        if body.get('status') != 200 or not body.get('data'):
+        if not body.get('data'):
             return {'symbol': symbol, 'history': []}
 
         from collections import defaultdict
@@ -264,14 +279,12 @@ def fetch_institutional_radar() -> list:
 
     def _fetch_one(symbol):
         try:
-            url = (
+            body = _finmind_get(
                 'https://api.finmindtrade.com/api/v4/data'
                 '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
                 f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=12, headers=HEADERS)
-            body = resp.json()
-            if body.get('status') != 200 or not body.get('data'):
+            if not body.get('data'):
                 return None
 
             from collections import defaultdict
@@ -347,14 +360,12 @@ def fetch_revenue_radar() -> list:
 
     def _fetch_one(symbol):
         try:
-            url = (
+            body = _finmind_get(
                 'https://api.finmindtrade.com/api/v4/data'
                 '?dataset=TaiwanStockMonthRevenue'
                 f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=12, headers=HEADERS)
-            body = resp.json()
-            if body.get('status') != 200 or not body.get('data'):
+            if not body.get('data'):
                 return None
 
             data = sorted(body['data'],
@@ -424,14 +435,12 @@ def fetch_contract_liabilities() -> list:
 
     def _fetch_one(symbol):
         try:
-            url = (
+            body = _finmind_get(
                 'https://api.finmindtrade.com/api/v4/data'
                 '?dataset=TaiwanStockBalanceSheet'
                 f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=12, headers=HEADERS)
-            body = resp.json()
-            if body.get('status') != 200 or not body.get('data'):
+            if not body.get('data'):
                 return None
 
             cl = [r for r in body['data']
@@ -494,14 +503,13 @@ def fetch_big_holders(symbol: str) -> dict:
     """Shareholder distribution — large (千張+) vs retail from FinMind."""
     start_date = (datetime.now() - timedelta(days=120)).strftime('%Y-%m-%d')
     try:
-        url = (
+        body = _finmind_get(
             'https://api.finmindtrade.com/api/v4/data'
             '?dataset=TaiwanStockHoldingSharesPer'
-            f'&data_id={symbol}&start_date={start_date}&token='
+            f'&data_id={symbol}&start_date={start_date}&token=',
+            timeout=15,
         )
-        resp = requests.get(url, timeout=15, headers=HEADERS)
-        body = resp.json()
-        if body.get('status') != 200 or not body.get('data'):
+        if not body.get('data'):
             return {'error': '無持股分布資料'}
 
         records   = body['data']
@@ -589,14 +597,12 @@ def fetch_sector_heat() -> list:
 
     def _fetch_one(symbol):
         try:
-            url = (
+            body = _finmind_get(
                 'https://api.finmindtrade.com/api/v4/data'
                 '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
                 f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=12, headers=HEADERS)
-            body = resp.json()
-            if body.get('status') != 200 or not body.get('data'):
+            if not body.get('data'):
                 return None
             records     = body['data']
             latest_date = max(r['date'] for r in records)
@@ -711,14 +717,12 @@ def fetch_reserve_stocks() -> list:
 
     def _fetch_one(symbol):
         try:
-            url = (
+            body = _finmind_get(
                 'https://api.finmindtrade.com/api/v4/data'
                 '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
                 f'&data_id={symbol}&start_date={start_date}&token='
             )
-            resp = requests.get(url, timeout=12, headers=HEADERS)
-            body = resp.json()
-            if body.get('status') != 200 or not body.get('data'):
+            if not body.get('data'):
                 return None
 
             from collections import defaultdict

@@ -181,6 +181,33 @@ async def get_reserve():
     return {"data": data}
 
 
+@app.get("/api/diagnostic")
+async def diagnostic():
+    """Test FinMind API connectivity — visit this to see why data may be missing."""
+    from data_fetcher import FINMIND_TOKEN
+    import requests as _req
+    from datetime import datetime, timedelta
+    test_date = (datetime.now() - timedelta(days=7)).strftime('%Y-%m-%d')
+    url = (
+        'https://api.finmindtrade.com/api/v4/data'
+        '?dataset=TaiwanStockInstitutionalInvestorsBuySell'
+        f'&data_id=2330&start_date={test_date}&token={FINMIND_TOKEN}'
+    )
+    try:
+        resp = _req.get(url, timeout=15)
+        body = resp.json()
+        return {
+            'finmind_status': body.get('status'),
+            'finmind_msg':    body.get('msg', ''),
+            'data_count':     len(body.get('data', [])),
+            'token_set':      bool(FINMIND_TOKEN),
+            'test_date':      test_date,
+            'hint': '若 finmind_status=402 表示超過免費額度，需設定 FINMIND_TOKEN 環境變數',
+        }
+    except Exception as e:
+        return {'error': str(e), 'token_set': bool(FINMIND_TOKEN)}
+
+
 @app.get("/api/stock/{symbol}/holders")
 async def get_holders(symbol: str):
     from data_fetcher import fetch_big_holders

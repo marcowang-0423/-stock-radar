@@ -775,64 +775,105 @@ function openScreenDetail(type, symbol) {
 }
 
 // ── AI Score ──────────────────────────────────────────────
+function _aiLabel(n) {
+  if (n >= 85) return '強勢追蹤';
+  if (n >= 70) return '轉強觀察';
+  if (n >= 55) return '初步轉機';
+  if (n >= 40) return '中性整理';
+  return '偏弱避開';
+}
+function _aiCls(n) {
+  return n >= 70 ? 'green' : n >= 50 ? 'yellow' : 'red';
+}
+
 function _renderAIScore(s) {
   const section = document.getElementById('dtAISection');
   const totalEl = document.getElementById('dtAITotal');
   const barsEl  = document.getElementById('dtAIBars');
   if (!section || !totalEl || !barsEl) return;
 
-  // Technical (max 35)
-  let tech = 0, hasTech = false;
+  const strats = s.strategies || [];
+  const pros = [], risks = [];
+
+  // ── 技術面 (max 30) ─────────────────────────────────────
+  let tech = 0;
   if (s.rsi != null) {
-    hasTech = true;
-    if      (s.rsi >= 30 && s.rsi <= 50) tech += 12;
-    else if (s.rsi > 50  && s.rsi <= 65) tech +=  7;
-    else if (s.rsi < 30)                 tech += 10;
-    else                                  tech +=  2;
+    if      (s.rsi >= 30 && s.rsi <= 50) { tech += 8; pros.push(`RSI ${s.rsi.toFixed(0)} 低檔整理`); }
+    else if (s.rsi >  50 && s.rsi <= 65) { tech += 6; pros.push(`RSI ${s.rsi.toFixed(0)} 中性偏多`); }
+    else if (s.rsi < 30)                  { tech += 5; pros.push(`RSI ${s.rsi.toFixed(0)} 超賣反彈`); }
+    else                                  { tech += 2; risks.push(`RSI ${s.rsi.toFixed(0)} 偏高`); }
   }
   if (s.macd_status != null) {
-    hasTech = true;
-    tech += ['黃金交叉','即將交叉','多頭'].includes(s.macd_status) ? 13 : 3;
+    if (['黃金交叉','即將交叉'].includes(s.macd_status)) { tech += 8; pros.push(`MACD ${s.macd_status}`); }
+    else if (s.macd_status === '多頭')                    { tech += 5; pros.push('MACD 多頭排列'); }
+    else                                                   { tech += 2; }
   }
-  const strats = s.strategies || [];
-  if (strats.includes('縮量回檔'))   { tech += 5; hasTech = true; }
-  if (strats.includes('均線守支撐')) { tech += 5; hasTech = true; }
-  tech = Math.min(35, Math.max(0, tech));
+  if (s.sma20_pct != null) {
+    if (s.sma20_pct > 0) { tech += 6; pros.push('股價站上月線'); }
+    else                  { risks.push('股價跌破月線'); }
+  }
+  if      (strats.includes('縮量回檔'))     { tech += 4; pros.push('縮量回檔健康洗盤'); }
+  else if ((s.vol_ratio ?? 0) >= 1.3)       { tech += 3; pros.push(`量能放大 ${s.vol_ratio?.toFixed(1)}x`); }
+  if (strats.includes('均線守支撐'))         { tech += 4; pros.push('均線守住支撐'); }
+  tech = Math.min(30, Math.max(0, tech));
 
-  // Chip (max 30) — from loaded institutional data
+  // ── 籌碼面 (max 30) ─────────────────────────────────────
   let chip = 0;
-  if (typeof _instData !== 'undefined' && _instData && !_instData.error) {
-    const allRows = _instData.stocks || _instData.top_buy || [];
-    const ir = allRows.find(r => r.symbol === s.symbol);
-    if (ir) {
-      if (ir.foreign_net > 0) chip += 12;
-      if (ir.trust_net   > 0) chip += 10;
-      if (ir.total_net   > 0) chip +=  8;
-    }
+  const allRows = (typeof _instData !== 'undefined' && _instData && !_instData.error)
+    ? (_instData.stocks || _instData.top_buy || []) : [];
+  const ir = allRows.find(r => r.symbol === s.symbol);
+  if (ir) {
+    const fnet = ir.foreign_net ?? 0;
+    const tnet = ir.trust_net   ?? 0;
+    if      (fnet > 5_000_000) { chip += 12; pros.push(`外資大量買超 ${Math.round(fnet/1000)}張`); }
+    else if (fnet > 0)         { chip +=  8; pros.push('外資買超'); }
+    else if (fnet < -5_000_000){ risks.push('外資大量賣超'); }
+    else if (fnet < 0)         { risks.push('外資小幅賣超'); }
+
+    if      (tnet > 1_000_000) { chip += 12; pros.push(`投信大量買超 ${Math.round(tnet/1000)}張`); }
+    else if (tnet > 0)         { chip += 10; pros.push('投信買超'); }
+    else if (tnet < 0)         { risks.push('投信尚未進場'); }
+  } else if (strats.includes('法人買超')) {
+    chip += 8; pros.push('法人買超');
+  } else {
+    risks.push('法人籌碼待確認');
   }
   chip = Math.min(30, chip);
 
-  const total = tech + chip;
-  const cls = total >= 55 ? 'green' : total >= 35 ? 'yellow' : 'red';
+  // ── 題材/產業熱度 (max 10) ──────────────────────────────
+  let heat = 0;
+  if (s.theme) { heat += 6; pros.push(`${s.theme} 題材`); }
+  if (strats.some(t => t.startsWith('題材:'))) heat = Math.min(10, heat + 4);
+  heat = Math.min(10, heat);
 
-  totalEl.textContent = total;
-  totalEl.className   = `ai-score-total ${cls}`;
+  const partial = tech + chip + heat;
+  window._aiState = { partial, pros: [...pros], risks: [...risks] };
+
+  totalEl.textContent = partial;
+  totalEl.className   = `ai-score-total ${_aiCls(partial + 15)}`;
 
   barsEl.innerHTML = `
-    <div class="ai-score-label">${total >= 55 ? '強勢訊號' : total >= 35 ? '中性觀望' : '謹慎留意'}</div>
+    <div class="ai-score-tagline" id="dtAITagline">${_aiLabel(partial + 15)}</div>
     <div class="ai-score-bars">
       <div class="ai-bar-row">
-        <div class="ai-bar-head"><span class="ai-bar-label">🔵 技術面 /35</span><span class="ai-bar-val">${hasTech ? tech : '--'}</span></div>
-        <div class="ai-bar-track"><div class="ai-bar-fill tech" style="width:${hasTech ? tech/35*100 : 0}%"></div></div>
+        <div class="ai-bar-head"><span class="ai-bar-label">🔵 技術面 /30</span><span class="ai-bar-val">${tech}</span></div>
+        <div class="ai-bar-track"><div class="ai-bar-fill tech" style="width:${tech/30*100}%"></div></div>
       </div>
       <div class="ai-bar-row">
         <div class="ai-bar-head"><span class="ai-bar-label">🟡 籌碼面 /30</span><span class="ai-bar-val">${chip}</span></div>
         <div class="ai-bar-track"><div class="ai-bar-fill chip" style="width:${chip/30*100}%"></div></div>
       </div>
       <div class="ai-bar-row">
-        <div class="ai-bar-head"><span class="ai-bar-label">🟢 基本面 /35</span><span class="ai-bar-val" id="dtAIFundVal">載入中…</span></div>
+        <div class="ai-bar-head"><span class="ai-bar-label">🟢 基本面 /30</span><span class="ai-bar-val" id="dtAIFundVal">載入中…</span></div>
         <div class="ai-bar-track"><div class="ai-bar-fill fund" style="width:0%" id="dtAIFundBar"></div></div>
       </div>
+      <div class="ai-bar-row">
+        <div class="ai-bar-head"><span class="ai-bar-label">🔥 題材熱度 /10</span><span class="ai-bar-val">${heat}</span></div>
+        <div class="ai-bar-track"><div class="ai-bar-fill heat" style="width:${heat/10*100}%"></div></div>
+      </div>
+    </div>
+    <div class="ai-reasons" id="dtAIReasons">
+      <div class="ai-reason-loading">財報資料載入中…</div>
     </div>`;
 
   section.style.display = '';
@@ -842,22 +883,55 @@ function _updateAIFund(d) {
   const fundValEl = document.getElementById('dtAIFundVal');
   const fundBarEl = document.getElementById('dtAIFundBar');
   const totalEl   = document.getElementById('dtAITotal');
+  const taglineEl = document.getElementById('dtAITagline');
+  const reasonsEl = document.getElementById('dtAIReasons');
   if (!fundValEl || !fundBarEl || !totalEl) return;
 
-  let fund = 0;
-  if (d.gross_margin    != null) fund += d.gross_margin    > 0.5 ? 12 : d.gross_margin > 0.3 ? 8 : 4;
-  if (d.revenue_growth  != null) fund += d.revenue_growth  > 0.3 ? 12 : d.revenue_growth > 0.1 ? 8 : d.revenue_growth > 0 ? 5 : 0;
-  if (d.earnings_growth != null) fund += d.earnings_growth > 0.3 ? 11 : d.earnings_growth > 0.1 ? 7 : d.earnings_growth > 0 ? 4 : 0;
-  fund = Math.min(35, fund);
+  const state   = window._aiState || {};
+  const partial = state.partial ?? 0;
+  const pros    = [...(state.pros  ?? [])];
+  const risks   = [...(state.risks ?? [])];
 
-  fundValEl.textContent   = fund;
-  fundBarEl.style.width   = `${fund/35*100}%`;
-  const newTotal = (parseInt(totalEl.textContent) || 0) + fund;
-  totalEl.textContent = newTotal;
-  totalEl.className   = `ai-score-total ${newTotal >= 70 ? 'green' : newTotal >= 50 ? 'yellow' : 'red'}`;
-  totalEl.nextElementSibling?.querySelector?.('.ai-score-label')
-    && (totalEl.nextElementSibling.querySelector('.ai-score-label').textContent =
-        newTotal >= 70 ? '強勢股 🟢' : newTotal >= 50 ? '觀察 🟡' : '謹慎 🔴');
+  // ── 基本面 (max 30) ─────────────────────────────────────
+  let fund = 0;
+  if (d.gross_margin != null) {
+    if      (d.gross_margin > 0.5) { fund += 10; pros.push(`毛利率 ${(d.gross_margin*100).toFixed(0)}%`); }
+    else if (d.gross_margin > 0.3) { fund +=  7; pros.push(`毛利率 ${(d.gross_margin*100).toFixed(0)}%`); }
+    else if (d.gross_margin > 0)   { fund +=  4; }
+    else                            {             risks.push('毛利率偏低'); }
+  }
+  if (d.revenue_growth != null) {
+    if      (d.revenue_growth > 0.3)  { fund += 10; pros.push(`營收年增 +${(d.revenue_growth*100).toFixed(0)}%`); }
+    else if (d.revenue_growth > 0.1)  { fund +=  7; pros.push('月營收年增轉強'); }
+    else if (d.revenue_growth > 0)    { fund +=  5; pros.push('月營收年增轉正'); }
+    else                               {             risks.push('月營收年增負成長'); }
+  }
+  if (d.earnings_growth != null) {
+    if      (d.earnings_growth > 0.3) { fund += 10; pros.push(`EPS 年增 +${(d.earnings_growth*100).toFixed(0)}%`); }
+    else if (d.earnings_growth > 0.1) { fund +=  7; pros.push('EPS 穩定成長'); }
+    else if (d.earnings_growth > 0)   { fund +=  4; pros.push('EPS 小幅成長'); }
+    else                               {             risks.push('EPS 未見成長'); }
+  }
+  fund = Math.min(30, fund);
+
+  const total = partial + fund;
+  fundValEl.textContent = fund;
+  fundBarEl.style.width = `${fund/30*100}%`;
+  totalEl.textContent   = total;
+  totalEl.className     = `ai-score-total ${_aiCls(total)}`;
+  if (taglineEl) taglineEl.textContent = _aiLabel(total);
+
+  if (reasonsEl) {
+    const prosHtml  = pros.length  ? `<div class="ai-reason-row">
+      <span class="ar-label pros">優點</span>
+      <span class="ar-items">${escHtml(pros.join('、'))}</span>
+    </div>` : '';
+    const risksHtml = risks.length ? `<div class="ai-reason-row">
+      <span class="ar-label risks">風險</span>
+      <span class="ar-items">${escHtml(risks.join('、'))}</span>
+    </div>` : '';
+    reasonsEl.innerHTML = prosHtml + risksHtml || '<div class="ai-reason-loading">--</div>';
+  }
 }
 
 // ── Big Holders ───────────────────────────────────────────

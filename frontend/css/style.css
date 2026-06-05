@@ -557,6 +557,36 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .ai-bar-fill.tech { background: linear-gradient(90deg, var(--accent2), var(--accent)); }
 .ai-bar-fill.chip { background: linear-gradient(90deg, #d29922, #f0b429); }
 .ai-bar-fill.fund { background: linear-gradient(90deg, #3fb950, #57d66e); }
+.ai-bar-fill.heat { background: linear-gradient(90deg, #e05a2b, #f0933a); }
+.ai-score-tagline {
+  font-size: 13px; font-weight: 700; text-align: center;
+  color: var(--txt1); margin: 2px 0 12px; letter-spacing: 0.5px;
+}
+.ai-reasons {
+  margin-top: 12px; padding-top: 10px;
+  border-top: 1px solid var(--bg3);
+  display: flex; flex-direction: column; gap: 6px;
+}
+.ai-reason-row { display: flex; gap: 6px; align-items: flex-start; font-size: 11px; line-height: 1.5; }
+.ar-label {
+  flex-shrink: 0; font-weight: 700; font-size: 10px;
+  padding: 1px 5px; border-radius: 3px; margin-top: 1px;
+}
+.ar-label.pros  { background: rgba(63,185,80,.18); color: var(--dn); }
+.ar-label.risks { background: rgba(248,81,73,.18);  color: var(--up); }
+.ar-items { color: var(--txt2); }
+.ai-reason-loading { font-size: 11px; color: var(--txt3); text-align: center; padding: 4px 0; }
+.ai-score-legend {
+  display: flex; justify-content: center; gap: 16px;
+  margin-top: 10px; padding-top: 8px;
+  border-top: 1px solid var(--bg3);
+}
+.asl-item { display: flex; align-items: center; gap: 5px; font-size: 11px; color: var(--txt2); }
+.asl-dot  { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+.asl-dot.green  { background: var(--dn); }
+.asl-dot.lime   { background: #8bd450; }
+.asl-dot.yellow { background: var(--gold); }
+.asl-dot.red    { background: var(--up); }
 
 /* ── Holder Chart ────────────────────────────────────── */
 .holder-row { display: flex; gap: 12px; margin-bottom: 10px; }

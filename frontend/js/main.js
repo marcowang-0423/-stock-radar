@@ -1218,6 +1218,90 @@ async function loadStopLoss(symbol) {
   }
 }
 
+// ── Search ────────────────────────────────────────────────
+async function searchStock() {
+  const input = document.getElementById('searchInput');
+  const symbol = (input.value || '').trim();
+  if (!symbol) return;
+
+  const btn = document.getElementById('searchBtn');
+  btn.textContent = '查詢中…';
+  btn.disabled = true;
+  input.disabled = true;
+
+  try {
+    const res = await fetch(`${BASE}/api/stock/${encodeURIComponent(symbol)}/summary`);
+    const s   = await res.json();
+
+    if (s.error) {
+      alert(`找不到股票 ${symbol}，請確認代號正確（例如 2330）`);
+      return;
+    }
+
+    input.value = '';
+    openSearchDetail(s);
+  } catch (e) {
+    alert('查詢失敗，請稍後再試');
+  } finally {
+    btn.textContent = '🔍 AI 評分';
+    btn.disabled = false;
+    input.disabled = false;
+    input.focus();
+  }
+}
+
+function openSearchDetail(s) {
+  _currentSymbol = s.symbol;
+  if (window.innerWidth >= 1024) loadKline(s.symbol, _currentPeriod);
+
+  document.getElementById('dtSym').textContent  = s.symbol;
+  document.getElementById('dtName').textContent = s.name || s.symbol;
+  const themeEl = document.getElementById('dtTheme');
+  themeEl.textContent = ''; themeEl.style.display = 'none';
+
+  document.getElementById('dtPrice').textContent = s.current?.toFixed(2) ?? '--';
+  document.getElementById('dtScore').textContent = '--';
+
+  const pbLbl = document.getElementById('dtPullbackLabel');
+  const pbVal = document.getElementById('dtPullback');
+  pbLbl.textContent = '今日漲跌';
+  const sign = (s.change_pct ?? 0) >= 0 ? '+' : '';
+  pbVal.textContent = `${sign}${s.change_pct?.toFixed(2) ?? '--'}%`;
+  pbVal.className   = `ps-val ${(s.change_pct ?? 0) >= 0 ? 'up' : 'dn'}`;
+
+  const rEl = document.getElementById('dtRisk');
+  rEl.textContent = '--'; rEl.className = 'ps-val';
+
+  const rsiLabel = (s.rsi < 30) ? '超賣區' : (s.rsi < 50) ? '低檔整理' : (s.rsi < 65) ? '中性' : '偏高';
+  const macdCls  = ['黃金交叉','即將交叉','多頭'].includes(s.macd_status) ? 'gold' : '';
+  const ma20sign = (s.sma20_pct ?? 0) >= 0 ? '+' : '';
+  const volCls   = (s.vol_ratio ?? 1) >= 1.4 ? 'up' : (s.vol_ratio < 0.75 ? 'accent' : '');
+
+  document.getElementById('dtReasons').innerHTML = [
+    `RSI ${s.rsi?.toFixed(1) ?? '--'} · ${rsiLabel}`,
+    `MACD ${escHtml(s.macd_status || '--')}`,
+    `月線 ${ma20sign}${s.sma20_pct?.toFixed(1) ?? '--'}%`,
+  ].map(r => `<li>${r}</li>`).join('');
+
+  document.getElementById('dtIndicators').innerHTML = `
+    <div class="ind-item"><div class="ind-label">RSI (14)</div><div class="ind-val">${s.rsi?.toFixed(1) ?? '--'} · ${rsiLabel}</div></div>
+    <div class="ind-item"><div class="ind-label">MACD 狀態</div><div class="ind-val ${macdCls}">${escHtml(s.macd_status || '--')}</div></div>
+    <div class="ind-item"><div class="ind-label">vs 月線 (MA20)</div><div class="ind-val ${(s.sma20_pct ?? 0) >= 0 ? 'up' : 'dn'}">${ma20sign}${s.sma20_pct?.toFixed(1) ?? '--'}%</div></div>
+    <div class="ind-item"><div class="ind-label">量能比 (5/30日)</div><div class="ind-val ${volCls}">${s.vol_ratio?.toFixed(2) ?? '--'} x</div></div>
+    <div class="ind-item"><div class="ind-label">現價</div><div class="ind-val">${s.current?.toFixed(2) ?? '--'}</div></div>
+    <div class="ind-item"><div class="ind-label">今日漲跌</div><div class="ind-val ${(s.change_pct ?? 0) >= 0 ? 'up' : 'dn'}">${sign}${s.change_pct?.toFixed(2) ?? '--'}%</div></div>`;
+
+  document.getElementById('dtStratSection').style.display = 'none';
+
+  document.getElementById('detailOverlay').classList.add('open');
+  document.body.style.overflow = 'hidden';
+  _renderAIScore(s);
+  loadStopLoss(s.symbol);
+  loadFinancials(s.symbol);
+  loadBacktest(s.symbol);
+  loadHolders(s.symbol);
+}
+
 // ── Utils ─────────────────────────────────────────────────
 function escHtml(str) {
   return (str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');

@@ -710,6 +710,92 @@ def fetch_stock_backtest(symbol: str) -> dict:
     return {'error': '無法取得回測資料'}
 
 
+def fetch_stock_summary(symbol: str) -> dict:
+    """Compute technical indicators for any stock — used by the search feature."""
+    for suffix in ['.TW', '.TWO']:
+        try:
+            hist = yf.Ticker(f"{symbol}{suffix}").history(period="6mo", interval="1d", auto_adjust=True)
+            if hist.empty or len(hist) < 30:
+                continue
+
+            closes = hist['Close'].values
+            highs  = hist['High'].values
+            lows_  = hist['Low'].values
+            vols   = hist['Volume'].values
+
+            current = float(closes[-1])
+            prev    = float(closes[-2]) if len(closes) >= 2 else current
+            change_pct = (current - prev) / prev * 100 if prev else 0
+
+            # RSI 14
+            delta = pd.Series(closes).diff()
+            gain  = delta.clip(lower=0).rolling(14).mean()
+            loss  = (-delta.clip(upper=0)).rolling(14).mean()
+            rs    = gain / loss.replace(0, float('inf'))
+            rsi   = float((100 - 100 / (1 + rs)).iloc[-1])
+
+            # SMA20 pct (price vs 20-day MA)
+            sma20     = float(pd.Series(closes).rolling(20).mean().iloc[-1])
+            sma20_pct = (current - sma20) / sma20 * 100 if sma20 else 0
+
+            # Vol ratio (5-day avg / 30-day avg)
+            v5    = float(pd.Series(vols).rolling(5).mean().iloc[-1])
+            v30   = float(pd.Series(vols).rolling(30).mean().iloc[-1])
+            vol_ratio = v5 / v30 if v30 > 0 else 1.0
+
+            # MACD (12, 26, 9)
+            ema12  = pd.Series(closes).ewm(span=12, adjust=False).mean()
+            ema26  = pd.Series(closes).ewm(span=26, adjust=False).mean()
+            ml     = ema12 - ema26
+            sl     = ml.ewm(span=9, adjust=False).mean()
+            m_cur, s_cur   = float(ml.iloc[-1]), float(sl.iloc[-1])
+            m_prev, s_prev = float(ml.iloc[-2]), float(sl.iloc[-2])
+
+            if m_cur > s_cur and m_prev <= s_prev:
+                macd_status = '黃金交叉'
+            elif m_cur < s_cur and m_cur > m_prev and abs(s_cur) > 0 and (s_cur - m_cur) < abs(s_cur) * 0.3:
+                macd_status = '即將交叉'
+            elif m_cur > s_cur and m_cur > 0:
+                macd_status = '多頭'
+            elif m_cur > s_cur:
+                macd_status = '偏多'
+            else:
+                macd_status = '空頭'
+
+            # Simple strategies
+            strategies = []
+            if sma20_pct > -3 and sma20_pct < 3:
+                strategies.append('均線守支撐')
+            if vol_ratio < 0.8 and sma20_pct < 0:
+                strategies.append('縮量回檔')
+
+            # Name lookup
+            from analyzer import STOCK_NAMES
+            name = STOCK_NAMES.get(symbol, symbol)
+
+            return {
+                'symbol':      symbol,
+                'name':        name,
+                'current':     round(current, 2),
+                'change_pct':  round(change_pct, 2),
+                'rsi':         round(rsi, 1),
+                'macd_status': macd_status,
+                'sma20_pct':   round(sma20_pct, 2),
+                'vol_ratio':   round(vol_ratio, 2),
+                'strategies':  strategies,
+                'theme':       None,
+                'score':       None,
+                'risk':        'medium',
+                'pullback_pct': None,
+                'rally_pct':   None,
+                'reasons':     [],
+            }
+        except Exception as e:
+            print(f'summary error {symbol}{suffix}: {e}')
+            continue
+    return {'error': f'找不到股票代號 {symbol}，請確認代號正確'}
+
+
 def fetch_reserve_stocks() -> list:
     """Pre-breakout watchlist: institutions just started buying, KD cross, not at 52-week high."""
     from analyzer import STOCK_NAMES

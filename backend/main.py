@@ -244,6 +244,18 @@ async def get_financials(symbol: str):
     return data
 
 
+@app.get("/api/stock/{symbol}/summary")
+async def get_summary(symbol: str):
+    from data_fetcher import fetch_stock_summary
+    key = f"summary_{symbol}"
+    if not _stale(key, 3600):
+        return _cache[key]
+    data = await _run(fetch_stock_summary, symbol)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
 @app.get("/api/stock/{symbol}/kline")
 async def get_kline(symbol: str, period: str = Query("3mo")):
     from data_fetcher import fetch_stock_kline

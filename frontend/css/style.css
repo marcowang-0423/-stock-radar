@@ -588,6 +588,43 @@ button { cursor: pointer; border: none; background: none; color: inherit; font: 
 .asl-dot.yellow { background: var(--gold); }
 .asl-dot.red    { background: var(--up); }
 
+/* ── Stock Search ────────────────────────────────────── */
+.search-row {
+  display: flex;
+  gap: 8px;
+  padding: 8px 0 2px;
+  align-items: center;
+}
+.search-input {
+  flex: 1;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 8px 12px;
+  color: var(--txt1);
+  font-size: 13px;
+  outline: none;
+  min-width: 0;
+  transition: border-color .15s;
+}
+.search-input::placeholder { color: var(--txt3); }
+.search-input:focus { border-color: var(--accent); }
+.search-btn {
+  flex-shrink: 0;
+  background: var(--accent2);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: opacity .15s;
+}
+.search-btn:hover  { opacity: .85; }
+.search-btn:disabled { opacity: .5; cursor: default; }
+
 /* ── Holder Chart ────────────────────────────────────── */
 .holder-row { display: flex; gap: 12px; margin-bottom: 10px; }
 .holder-item { flex: 1; text-align: center; }

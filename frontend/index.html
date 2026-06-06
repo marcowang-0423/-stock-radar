@@ -80,6 +80,13 @@
           <button class="screen-tab" onclick="switchScreen('reserve',this)">預備軍</button>
         </div>
         <div class="sec-notice" id="screenNotice">⚠ 飆漲後回檔整理・守均線・逢低布局・非追高</div>
+        <div class="search-row">
+          <input type="text" class="search-input" id="searchInput"
+            placeholder="搜尋任意股票，例如 2330"
+            inputmode="numeric" maxlength="6"
+            onkeydown="if(event.key==='Enter')searchStock()">
+          <button class="search-btn" id="searchBtn" onclick="searchStock()">🔍 AI 評分</button>
+        </div>
       </div>
       <!-- Strategy legend (pullback tab only) -->
       <div class="strategy-legend" id="stratLegend">

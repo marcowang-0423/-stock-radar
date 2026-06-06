@@ -907,3 +907,137 @@ def fetch_reserve_stocks() -> list:
 
     rows.sort(key=lambda x: x['score'], reverse=True)
     return rows[:15]
+
+
+def fetch_surveillance() -> dict:
+    """Fetch TWSE disposition (處置) and notice (注意) stocks."""
+    hdrs = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://www.twse.com.tw/',
+        'Accept': 'application/json, text/plain, */*',
+    }
+    result = {'disposition': [], 'notice': []}
+
+    try:
+        r = requests.get(
+            'https://www.twse.com.tw/rwd/zh/surveillance/dispositionInfo?response=json',
+            headers=hdrs, timeout=12
+        )
+        data = r.json()
+        if data.get('stat') == 'OK':
+            for row in data.get('data', []):
+                if not isinstance(row, list) or len(row) < 4:
+                    continue
+                end_str = str(row[4]).strip() if len(row) > 4 else ''
+                days_left = None
+                try:
+                    parts = end_str.replace('/', '-').split('-')
+                    if len(parts) == 3 and parts[0].isdigit():
+                        ad_year = int(parts[0]) + (1911 if int(parts[0]) < 1000 else 0)
+                        end_dt = datetime(ad_year, int(parts[1]), int(parts[2]))
+                        days_left = (end_dt - datetime.now()).days
+                except Exception:
+                    pass
+                result['disposition'].append({
+                    'symbol':    str(row[0]).strip(),
+                    'name':      str(row[1]).strip(),
+                    'announce':  str(row[2]).strip(),
+                    'start':     str(row[3]).strip(),
+                    'end':       end_str,
+                    'days_left': days_left,
+                    'reason':    str(row[5]).strip() if len(row) > 5 else '',
+                })
+    except Exception as e:
+        print(f'[Surveillance] disposition: {e}')
+
+    try:
+        r = requests.get(
+            'https://www.twse.com.tw/rwd/zh/surveillance/noticeInfo?response=json',
+            headers=hdrs, timeout=12
+        )
+        data = r.json()
+        if data.get('stat') == 'OK':
+            for row in data.get('data', []):
+                if not isinstance(row, list) or len(row) < 3:
+                    continue
+                result['notice'].append({
+                    'symbol': str(row[0]).strip(),
+                    'name':   str(row[1]).strip(),
+                    'date':   str(row[2]).strip(),
+                    'reason': str(row[3]).strip() if len(row) > 3 else '',
+                })
+    except Exception as e:
+        print(f'[Surveillance] notice: {e}')
+
+    return result
+
+
+def fetch_investor_conferences() -> list:
+    """Fetch upcoming investor conference schedule from MOPS (本月 + 下月)."""
+    import re
+    results = []
+    hdrs = {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Referer': 'https://mops.twse.com.tw/',
+        'Content-Type': 'application/x-www-form-urlencoded',
+    }
+    today = datetime.now()
+    for month_offset in (0, 1):
+        dt = (today.replace(day=1) + timedelta(days=32 * month_offset)).replace(day=1)
+        roc_year  = dt.year - 1911
+        month_str = str(dt.month).zfill(2)
+        for market in ('sii', 'otc'):
+            try:
+                r = requests.post(
+                    'https://mops.twse.com.tw/mops/web/ajax_t100sb15',
+                    data={
+                        'encodeURIComponent': '1',
+                        'step': '1',
+                        'firstin': 'true',
+                        'off': '1',
+                        'TYPEK': market,
+                        'year': str(roc_year),
+                        'month': month_str,
+                    },
+                    headers=hdrs, timeout=18
+                )
+                text = r.text
+                rows = re.findall(r'<tr[^>]*>(.*?)</tr>', text, re.DOTALL | re.IGNORECASE)
+                for row_html in rows:
+                    cells = re.findall(r'<td[^>]*>(.*?)</td>', row_html, re.DOTALL | re.IGNORECASE)
+                    if len(cells) < 4:
+                        continue
+                    clean = [
+                        re.sub(r'<[^>]+>', '', c).strip().replace('\xa0', ' ').replace('&nbsp;', ' ')
+                        for c in cells
+                    ]
+                    # Find the date cell (ROC format: 113/06/08)
+                    date_raw = clean[0]
+                    if not date_raw or '/' not in date_raw:
+                        continue
+                    parts = date_raw.split('/')
+                    if len(parts) != 3 or not parts[0].isdigit():
+                        continue
+                    try:
+                        date_fmt = f'{int(parts[0])+1911}/{parts[1]}/{parts[2]}'
+                    except Exception:
+                        date_fmt = date_raw
+                    results.append({
+                        'date':    date_fmt,
+                        'symbol':  clean[1] if len(clean) > 1 else '',
+                        'company': clean[2] if len(clean) > 2 else '',
+                        'time':    clean[3] if len(clean) > 3 else '',
+                        'venue':   clean[4] if len(clean) > 4 else '',
+                        'market':  '上市' if market == 'sii' else '上櫃',
+                    })
+            except Exception as e:
+                print(f'[Conferences] {market} {roc_year}/{month_str}: {e}')
+
+    results.sort(key=lambda x: x['date'])
+    seen, unique = set(), []
+    for item in results:
+        key = (item['date'], item['symbol'])
+        if key not in seen:
+            seen.add(key)
+            unique.append(item)
+    return unique[:60]

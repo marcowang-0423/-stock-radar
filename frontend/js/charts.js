@@ -30,26 +30,44 @@ async function loadIndices() {
 function _trySentiment() {
   if (!_indicesData || !_instData || _instData.error) return;
 
-  let score = 0;
+  let score = 50;  // neutral baseline
+
   const twii = _indicesData.find(d => d.name === '加權指數');
-  if (twii) score += twii.is_up ? 1.5 : -1.5;
+  if (twii) score += Math.min(15, Math.max(-15, (twii.change_pct || 0) * 3));
+
+  const etf50 = _indicesData.find(d => (d.name || '').includes('0050'));
+  if (etf50) score += Math.min(5, Math.max(-5, (etf50.change_pct || 0) * 2));
 
   const s = _instData.summary || {};
-  score += (s.foreign_total || 0) > 0 ? 1 : -1;
-  score += (s.trust_total   || 0) > 0 ? 0.5 : -0.5;
+  const fNet = s.foreign_total || 0;
+  const tNet = s.trust_total   || 0;
+  const dNet = s.dealer_total  || 0;
+  score += Math.min(20, Math.max(-20, fNet / 1_000_000_000 * 2));
+  score += Math.min(10, Math.max(-10, tNet / 500_000_000 * 10));
+
+  score = Math.round(Math.max(0, Math.min(100, score)));
+
+  let cls, text;
+  if      (score >= 65) { cls = 'green';  text = '市場偏多'; }
+  else if (score >= 40) { cls = 'yellow'; text = '中性觀望'; }
+  else                  { cls = 'red';    text = '市場偏空'; }
 
   const dot = document.getElementById('sentimentDot');
   const lbl = document.getElementById('sentimentLabel');
   if (!dot || !lbl) return;
 
-  let cls, text;
-  if      (score >= 1.5) { cls = 'green';  text = '市場偏多'; }
-  else if (score >= 0)   { cls = 'yellow'; text = '中性觀望'; }
-  else                   { cls = 'red';    text = '市場偏空'; }
-
   dot.className = `sentiment-dot ${cls}`;
   lbl.className = `sentiment-label ${cls}`;
-  lbl.textContent = text;
+  lbl.textContent = `${text} ${score}`;
+
+  window._sentimentData = {
+    score, trend: text, level: cls,
+    indices:    _indicesData,
+    foreign_bn: +((fNet / 1e8).toFixed(1)),
+    trust_bn:   +((tNet / 1e8).toFixed(1)),
+    dealer_bn:  +((dNet / 1e8).toFixed(1)),
+    inst_date:  _instData.date,
+  };
 }
 
 function renderTicker(items) {

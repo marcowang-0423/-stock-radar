@@ -25,7 +25,7 @@
   <div class="ticker-bar" id="tickerBar">
     <span class="ticker-loading">載入中…</span>
   </div>
-  <div class="sentiment-wrap" id="sentimentWrap" title="大盤情緒">
+  <div class="sentiment-wrap" id="sentimentWrap" title="大盤情緒 · 點擊查看詳情" onclick="toggleSentimentPopup()">
     <div class="sentiment-dot" id="sentimentDot"></div>
     <span class="sentiment-label" id="sentimentLabel">--</span>
   </div>
@@ -78,6 +78,8 @@
           <button class="screen-tab" onclick="switchScreen('contracts',this)">合約負債</button>
           <button class="screen-tab" onclick="switchScreen('sector_heat',this)">族群熱度</button>
           <button class="screen-tab" onclick="switchScreen('reserve',this)">預備軍</button>
+          <button class="screen-tab" onclick="switchScreen('surveillance',this)">警示股</button>
+          <button class="screen-tab" onclick="switchScreen('conferences',this)">法說會</button>
         </div>
         <div class="sec-notice" id="screenNotice">⚠ 飆漲後回檔整理・守均線・逢低布局・非追高</div>
         <div class="search-row">
@@ -158,6 +160,28 @@
   </aside>
 
 </div><!-- /dashboard -->
+
+<!-- ───── SENTIMENT POPUP ───── -->
+<div class="sentiment-backdrop" id="sentimentBackdrop" onclick="closeSentimentPopup()"></div>
+<div class="sentiment-popup" id="sentimentPopup">
+  <div class="sp-header">
+    <span class="sp-title">📊 大盤情緒分析</span>
+    <button class="sp-close" onclick="closeSentimentPopup()">✕</button>
+  </div>
+  <div class="sp-score-row">
+    <div class="sp-score-num" id="spScore">--</div>
+    <div class="sp-score-meta">
+      <div class="sp-score-label" id="spTrend">--</div>
+      <div class="sp-score-sub">市場溫度指數</div>
+    </div>
+  </div>
+  <div class="sp-bar-track"><div class="sp-bar-fill" id="spBar" style="width:0%"></div></div>
+  <div class="sp-bar-marks"><span>偏空</span><span>中性</span><span>偏多</span></div>
+  <div class="sp-divider"></div>
+  <div class="sp-grid" id="spGrid">
+    <div class="sp-loading">資料載入中…</div>
+  </div>
+</div>
 
 <!-- ───── MOBILE BOTTOM NAV ───── -->
 <nav class="bottom-nav" id="bottomNav">

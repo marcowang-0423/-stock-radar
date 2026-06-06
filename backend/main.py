@@ -244,6 +244,31 @@ async def get_financials(symbol: str):
     return data
 
 
+@app.get("/api/surveillance")
+async def get_surveillance():
+    from data_fetcher import fetch_surveillance
+    key = "surveillance"
+    if not _stale(key, 3600):
+        return _cache[key]
+    data = await _run(fetch_surveillance)
+    _cache[key] = data
+    _cache_ts[key] = time.time()
+    return data
+
+
+@app.get("/api/conferences")
+async def get_conferences():
+    from data_fetcher import fetch_investor_conferences
+    key = "conferences"
+    if not _stale(key, 21600):
+        return _cache[key]
+    data = await _run(fetch_investor_conferences)
+    result = {"data": data}
+    _cache[key] = result
+    _cache_ts[key] = time.time()
+    return result
+
+
 @app.get("/api/stock/{symbol}/summary")
 async def get_summary(symbol: str):
     from data_fetcher import fetch_stock_summary

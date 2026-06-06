@@ -305,7 +305,9 @@ const SCREEN_CONFIG = {
   revenue:     { title: '營收爆發雷達',   notice: '📈 月增率・年增率・3月平均年增',             showLegend: false },
   contracts:   { title: '合約負債排行',   notice: '💼 合約負債先噴→營收噴→EPS噴 先行指標',    showLegend: false },
   sector_heat: { title: '產業族群熱度',   notice: '🌡 今日法人主攻族群・買超最強板塊一覽',      showLegend: false },
-  reserve:     { title: '飆股預備軍',     notice: '🚀 法人剛開始買・尚未突破前高・KD 交叉訊號', showLegend: false },
+  reserve:      { title: '飆股預備軍',    notice: '🚀 法人剛開始買・尚未突破前高・KD 交叉訊號', showLegend: false },
+  surveillance: { title: '處置/注意股專區', notice: '⚠ 處置股有交易限制・注意股為近期異常交易',    showLegend: false },
+  conferences:  { title: '法說會行事曆',   notice: '📋 本月 + 下月法說會時間表（上市 + 上櫃）',    showLegend: false },
 };
 
 async function loadScreens() {
@@ -372,6 +374,45 @@ async function loadSectorHeat() {
     document.getElementById('recCards').innerHTML = '<div class="empty-state"><span>族群資料載入失敗</span></div>';
   } finally {
     _sectorLoading = false;
+  }
+}
+
+let _surveillanceData    = null;
+let _surveillanceLoading = false;
+
+async function loadSurveillance() {
+  if (_surveillanceLoading) return;
+  _surveillanceLoading = true;
+  const el = document.getElementById('recCards');
+  el.innerHTML = '<div class="rec-loading"><div class="spinner"></div><p>掃描警示股…</p></div>';
+  try {
+    const res = await fetch(`${BASE}/api/surveillance`);
+    _surveillanceData = await res.json();
+    if (_activeScreen === 'surveillance') renderScreen('surveillance');
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><span>警示股資料載入失敗</span></div>';
+  } finally {
+    _surveillanceLoading = false;
+  }
+}
+
+let _conferencesData    = null;
+let _conferencesLoading = false;
+
+async function loadConferences() {
+  if (_conferencesLoading) return;
+  _conferencesLoading = true;
+  const el = document.getElementById('recCards');
+  el.innerHTML = '<div class="rec-loading"><div class="spinner"></div><p>載入法說會行事曆…</p></div>';
+  try {
+    const res = await fetch(`${BASE}/api/conferences`);
+    const d = await res.json();
+    _conferencesData = d.data || [];
+    if (_activeScreen === 'conferences') renderScreen('conferences');
+  } catch (e) {
+    el.innerHTML = '<div class="empty-state"><span>法說會資料載入失敗</span></div>';
+  } finally {
+    _conferencesLoading = false;
   }
 }
 
@@ -446,6 +487,39 @@ function renderScreen(type) {
       return;
     }
     el.innerHTML = _reserveData.map(s => buildReserveCard(s)).join('');
+    return;
+  }
+
+  // Surveillance (處置股 + 注意股)
+  if (type === 'surveillance') {
+    if (!_surveillanceData) { loadSurveillance(); return; }
+    const disp = _surveillanceData.disposition || [];
+    const note = _surveillanceData.notice     || [];
+    if (!disp.length && !note.length) {
+      el.innerHTML = '<div class="empty-state"><span>今日無警示股</span><small>市場交易正常</small></div>';
+      return;
+    }
+    let html = '';
+    if (disp.length) {
+      html += `<div class="surv-header">🔴 處置股（${disp.length} 檔）</div>`;
+      html += disp.map(s => buildDispositionCard(s)).join('');
+    }
+    if (note.length) {
+      html += `<div class="surv-header">🟡 注意股（${note.length} 檔）</div>`;
+      html += note.map(s => buildNoticeCard(s)).join('');
+    }
+    el.innerHTML = html;
+    return;
+  }
+
+  // Investor Conferences (法說會)
+  if (type === 'conferences') {
+    if (!_conferencesData) { loadConferences(); return; }
+    if (!_conferencesData.length) {
+      el.innerHTML = '<div class="empty-state"><span>本月無法說會資料</span><small>MOPS 資料可能尚未更新</small></div>';
+      return;
+    }
+    el.innerHTML = `<div class="conf-list">${_conferencesData.map(c => buildConferenceItem(c)).join('')}</div>`;
     return;
   }
 
@@ -1300,6 +1374,115 @@ function openSearchDetail(s) {
   loadFinancials(s.symbol);
   loadBacktest(s.symbol);
   loadHolders(s.symbol);
+}
+
+// ── Surveillance Card Builders ────────────────────────────
+function buildDispositionCard(s) {
+  const dLeft = s.days_left;
+  const dCls  = dLeft != null && dLeft <= 3 ? 'dn' : dLeft != null && dLeft <= 7 ? 'gold' : 'blue';
+  const dText = dLeft != null ? `剩 ${dLeft} 天出關` : '出關日 --';
+  return `<div class="stock-card card-exit" onclick="selectStock('${escHtml(s.symbol)}')">
+    <div class="risk-dot high"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name)}</div>
+    <div class="card-tags" style="margin-top:6px">
+      <span class="tag bear">🚫 處置中</span>
+      <span class="tag ${dCls}">${dText}</span>
+    </div>
+    <div class="surv-dates">${escHtml(s.start)} → ${escHtml(s.end)}</div>
+    ${s.reason ? `<div class="card-reason" style="color:var(--warn)">${escHtml(s.reason)}</div>` : ''}
+  </div>`;
+}
+
+function buildNoticeCard(s) {
+  return `<div class="stock-card" onclick="selectStock('${escHtml(s.symbol)}')">
+    <div class="risk-dot medium"></div>
+    <div class="card-sym">${escHtml(s.symbol)}</div>
+    <div class="card-name">${escHtml(s.name)}</div>
+    <div class="card-tags" style="margin-top:6px">
+      <span class="tag" style="background:rgba(210,153,34,.15);color:var(--gold)">⚠ 注意</span>
+      <span class="tag">${escHtml(s.date)}</span>
+    </div>
+    ${s.reason ? `<div class="card-reason">${escHtml(s.reason)}</div>` : ''}
+  </div>`;
+}
+
+function buildConferenceItem(c) {
+  const mkCls = c.market === '上市' ? 'sii' : 'otc';
+  return `<div class="conf-item">
+    <div class="conf-date">${escHtml(c.date)}</div>
+    <div class="conf-info">
+      <div class="conf-company">${escHtml(c.company)} <span class="conf-sym">${escHtml(c.symbol)}</span>
+        <span class="conf-mkt ${mkCls}">${escHtml(c.market)}</span>
+      </div>
+      ${(c.time || c.venue) ? `<div class="conf-meta">${[c.time, c.venue].filter(Boolean).map(escHtml).join(' · ')}</div>` : ''}
+    </div>
+  </div>`;
+}
+
+// ── Sentiment Popup ───────────────────────────────────────
+function toggleSentimentPopup() {
+  const popup    = document.getElementById('sentimentPopup');
+  const backdrop = document.getElementById('sentimentBackdrop');
+  if (!popup) return;
+  const isOpen = popup.classList.contains('open');
+  if (isOpen) {
+    popup.classList.remove('open');
+    backdrop?.classList.remove('open');
+  } else {
+    popup.classList.add('open');
+    backdrop?.classList.add('open');
+    _fillSentimentPopup();
+  }
+}
+
+function closeSentimentPopup() {
+  document.getElementById('sentimentPopup')?.classList.remove('open');
+  document.getElementById('sentimentBackdrop')?.classList.remove('open');
+}
+
+function _fillSentimentPopup() {
+  const sd = window._sentimentData;
+  const scoreEl = document.getElementById('spScore');
+  const trendEl = document.getElementById('spTrend');
+  const barEl   = document.getElementById('spBar');
+  const gridEl  = document.getElementById('spGrid');
+  if (!scoreEl || !gridEl) return;
+
+  if (!sd) {
+    gridEl.innerHTML = '<div class="sp-loading">等待資料載入…</div>';
+    return;
+  }
+
+  scoreEl.textContent = sd.score;
+  scoreEl.style.color = sd.level === 'green' ? '#3fb950' : sd.level === 'yellow' ? '#d29922' : '#f85149';
+  if (trendEl) trendEl.textContent = sd.trend;
+  if (barEl)   barEl.style.width   = `${sd.score}%`;
+
+  const fmtBn = v => {
+    if (v == null) return '--';
+    return `${v >= 0 ? '+' : ''}${v.toFixed(1)}億`;
+  };
+  const bnCls = v => (v == null ? '' : v >= 0 ? 'up' : 'dn');
+
+  const twii = sd.indices?.find(d => d.name === '加權指數');
+  const etf  = sd.indices?.find(d => (d.name || '').includes('0050'));
+  const dir  = d => d?.is_up ? '▲' : '▼';
+  const dCls = d => d?.is_up ? 'up' : 'dn';
+
+  gridEl.innerHTML = `
+    ${twii ? `<div class="sp-item"><div class="sp-lbl">加權指數</div>
+      <div class="sp-val ${dCls(twii)}">${dir(twii)} ${twii.change_pct?.toFixed(2) ?? '--'}%</div></div>` : ''}
+    ${etf  ? `<div class="sp-item"><div class="sp-lbl">ETF 0050</div>
+      <div class="sp-val ${dCls(etf)}">${dir(etf)} ${etf.change_pct?.toFixed(2) ?? '--'}%</div></div>` : ''}
+    <div class="sp-item"><div class="sp-lbl">外資</div>
+      <div class="sp-val ${bnCls(sd.foreign_bn)}">${fmtBn(sd.foreign_bn)}</div></div>
+    <div class="sp-item"><div class="sp-lbl">投信</div>
+      <div class="sp-val ${bnCls(sd.trust_bn)}">${fmtBn(sd.trust_bn)}</div></div>
+    <div class="sp-item"><div class="sp-lbl">自營商</div>
+      <div class="sp-val ${bnCls(sd.dealer_bn)}">${fmtBn(sd.dealer_bn)}</div></div>
+    ${sd.inst_date ? `<div class="sp-item"><div class="sp-lbl">資料日期</div>
+      <div class="sp-val" style="font-size:11px;color:var(--txt3)">${escHtml(sd.inst_date)}</div></div>` : ''}`;
 }
 
 // ── Utils ─────────────────────────────────────────────────

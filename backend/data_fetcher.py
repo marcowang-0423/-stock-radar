@@ -1011,17 +1011,26 @@ def fetch_investor_conferences() -> list:
                         re.sub(r'<[^>]+>', '', c).strip().replace('\xa0', ' ').replace('&nbsp;', ' ')
                         for c in cells
                     ]
-                    # Find the date cell (ROC format: 113/06/08)
-                    date_raw = clean[0]
-                    if not date_raw or '/' not in date_raw:
+                    # Find the date cell (ROC format: 113/06/08) in any of first 6 cells
+                    date_fmt = None
+                    for ci, cell_txt in enumerate(clean[:6]):
+                        parts = cell_txt.split('/')
+                        if len(parts) == 3 and all(p.isdigit() for p in parts) and int(parts[0]) > 100:
+                            try:
+                                date_fmt = f'{int(parts[0])+1911}/{parts[1]}/{parts[2]}'
+                                break
+                            except Exception:
+                                pass
+                    if not date_fmt:
                         continue
-                    parts = date_raw.split('/')
-                    if len(parts) != 3 or not parts[0].isdigit():
-                        continue
-                    try:
-                        date_fmt = f'{int(parts[0])+1911}/{parts[1]}/{parts[2]}'
-                    except Exception:
-                        date_fmt = date_raw
+                    # Extract first MOPS/HTTP link from the whole row
+                    link = None
+                    for href in re.findall(r'href=["\']([^"\']+)["\']', row_html, re.IGNORECASE):
+                        if href.startswith('/mops/') or href.startswith('http'):
+                            if href.startswith('/'):
+                                href = f'https://mops.twse.com.tw{href}'
+                            link = href
+                            break
                     results.append({
                         'date':    date_fmt,
                         'symbol':  clean[1] if len(clean) > 1 else '',
@@ -1029,6 +1038,7 @@ def fetch_investor_conferences() -> list:
                         'time':    clean[3] if len(clean) > 3 else '',
                         'venue':   clean[4] if len(clean) > 4 else '',
                         'market':  '上市' if market == 'sii' else '上櫃',
+                        'link':    link,
                     })
             except Exception as e:
                 print(f'[Conferences] {market} {roc_year}/{month_str}: {e}')

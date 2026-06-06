@@ -1409,6 +1409,9 @@ function buildNoticeCard(s) {
 
 function buildConferenceItem(c) {
   const mkCls = c.market === '上市' ? 'sii' : 'otc';
+  const linkHtml = c.link
+    ? `<a class="conf-link" href="${escHtml(c.link)}" target="_blank" rel="noopener" onclick="event.stopPropagation()">查看詳情 →</a>`
+    : '';
   return `<div class="conf-item">
     <div class="conf-date">${escHtml(c.date)}</div>
     <div class="conf-info">
@@ -1416,6 +1419,7 @@ function buildConferenceItem(c) {
         <span class="conf-mkt ${mkCls}">${escHtml(c.market)}</span>
       </div>
       ${(c.time || c.venue) ? `<div class="conf-meta">${[c.time, c.venue].filter(Boolean).map(escHtml).join(' · ')}</div>` : ''}
+      ${linkHtml}
     </div>
   </div>`;
 }
